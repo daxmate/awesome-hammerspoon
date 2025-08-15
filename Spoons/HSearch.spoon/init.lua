@@ -176,7 +176,7 @@ function obj:loadSources()
         local file_list = io.popen("find " .. dir .. " -type f -name '*.lua'")
         for file in file_list:lines() do
             -- Exclude self
-            if file ~= obj.spoonPath .. "/init.lua" then
+            if file ~= obj.spoonPath .. "init.lua" then
                 local f = loadfile(file)
                 if f then
                     local source = f()
