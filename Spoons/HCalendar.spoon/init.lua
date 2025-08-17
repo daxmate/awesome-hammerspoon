@@ -24,8 +24,6 @@ local function updateHcalCanvas()
     local titlestr = currentyear .. "年" .. currentmonth .. "月"
     obj.canvas[3].text = titlestr
     local nextmonth = (currentmonth + 1) % 12
-    local lastmonth = currentmonth == 1 and 12 or currentmonth - 1
-    local nextnextmonth = (nextmonth + 1) % 12
     -- local weeknames = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"}
     local weeknames = {"日", "一", "二", "三", "四", "五", "六"}
     local firstdayofnextmonth = os.time({
@@ -33,28 +31,9 @@ local function updateHcalCanvas()
         month = currentmonth == 12 and 1 or currentmonth + 1,
         day = 1
     })
-    local firstdayofcurrentmonth = os.time({
-        year = currentyear,
-        month = currentmonth,
-        day = 1
-    })
-    local firstdayofnextnextmonth = os.time({
-        year = nextmonth == 12 and currentyear + 1 or currentyear,
-        month = nextmonth == 12 and 1 or nextmonth + 1,
-        day = 1
-    })
     local lastdayofcurrentmonth = os.date("*t",
                                           firstdayofnextmonth - 24 * 60 * 60)
                                       .day
-    local lastdayoflastmonth = os.date("*t",
-                                       firstdayofcurrentmonth - 24 * 60 * 60)
-                                   .day
-    local lastdayofnextmonth = os.date("*t",
-                                       firstdayofnextnextmonth - 24 * 60 * 60)
-                                   .day
-    local lastdays = {
-        lastdayoflastmonth, lastdayofcurrentmonth, lastdayofnextmonth
-    }
     for i = 1, lastdayofcurrentmonth do
         local weekdayofqueriedday = os.date("*t", os.time(
                                                 {
@@ -93,7 +72,7 @@ end
 
 function obj:init()
     local hcalbgcolor = {hex = "#000000", alpha = 0.3}
-    local hcaltitlecolor = {hex = "#FFFFFF", alpha = 0.3}
+    local hcaltitlecolor = {hex = "#FFFFFF", alpha = 0.5}
     local todaycolor = {hex = "#FFFFFF", alpha = 0.2}
     local midlinecolor = {hex = "#FFFFFF", alpha = 0.5}
     local cscreen = hs.screen.mainScreen()
