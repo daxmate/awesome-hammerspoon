@@ -17,11 +17,12 @@ obj.hcalw = 31 * 24 + 20
 obj.hcalh = 100
 
 local function updateHcalCanvas()
-    local titlestr = os.date("%B %Y")
-    obj.canvas[3].text = titlestr
     local currentyear = os.date("%Y")
     local currentmonth = os.date("%m")
     local currentday = os.date("%d")
+
+    local titlestr = currentyear .. "年" .. currentmonth .. "月"
+    obj.canvas[3].text = titlestr
     local nextmonth = (currentmonth + 1) % 12
     local lastmonth = currentmonth == 1 and 12 or currentmonth - 1
     local nextnextmonth = (nextmonth + 1) % 12
