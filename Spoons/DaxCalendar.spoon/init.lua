@@ -18,8 +18,20 @@ obj.calw = 260
 obj.calh = 184
 
 local function updateCalCanvas()
-	local titlestr = os.date("%B %Y")
-	obj.canvas[2].text = titlestr
+	local chinese_months = {
+		"一月",
+		"二月",
+		"三月",
+		"四月",
+		"五月",
+		"六月",
+		"七月",
+		"八月",
+		"九月",
+		"十月",
+		"十一月",
+		"十二月",
+	}
 	local current_year = os.date("%Y")
 	local current_month = os.date("%m")
 	local current_day = os.date("%d")
@@ -28,8 +40,19 @@ local function updateCalCanvas()
 	local weekday_of_firstday = os.date("*t", os.time({ year = current_year, month = current_month, day = 1 })).wday
 	local needed_rownum = math.ceil((weekday_of_firstday + maxday_of_currentmonth - 1) / 7)
 
+	local titlestr = os.date("%Y") .. "\t" .. chinese_months[tonumber(current_month)]
+	obj.canvas[2].text = titlestr
+
+	local row, col
 	for i = 1, needed_rownum do
 		for k = 1, 7 do
+			if k == 7 then
+				row = i + 1
+				col = 1
+			else
+				row = i
+				col = k + 1
+			end
 			local caltable_idx = 7 * (i - 1) + k
 			local pushbacked_value = caltable_idx - weekday_of_firstday + 2
 			if pushbacked_value <= 0 or pushbacked_value > maxday_of_currentmonth then
@@ -38,8 +61,8 @@ local function updateCalCanvas()
 				obj.canvas[9 + caltable_idx].text = pushbacked_value
 			end
 			if pushbacked_value == math.tointeger(current_day) then
-				obj.canvas[58].frame.x = tostring((10 + (obj.calw - 20) / 8 * k) / obj.calw)
-				obj.canvas[58].frame.y = tostring((10 + (obj.calh - 20) / 8 * (i + 1)) / obj.calh)
+				obj.canvas[58].frame.x = tostring((10 + (obj.calw - 20) / 8 * col) / obj.calw)
+				obj.canvas[58].frame.y = tostring((10 + (obj.calh - 20) / 8 * (row + 1)) / obj.calh)
 			end
 		end
 	end
@@ -62,8 +85,10 @@ end
 function obj:init()
 	local caltodaycolor = { red = 1, blue = 1, green = 1, alpha = 0.3 }
 	local calcolor = { red = 235 / 255, blue = 235 / 255, green = 235 / 255 }
+	local cal_header_color = {hex = '#78FF78'}
 	local calbgcolor = { red = 0, blue = 0, green = 0, alpha = 0.3 }
 	local weeknumcolor = { red = 246 / 255, blue = 246 / 255, green = 246 / 255, alpha = 0.5 }
+	local weekend_color = { hex = "#FF7878" }
 	local cscreen = hs.screen.mainScreen()
 	local cres = cscreen:fullFrame()
 
@@ -103,15 +128,17 @@ function obj:init()
 		},
 	}
 
-	local weeknames = { "Mo", "Tu", "We", "Th", "Fr", "Sa", "Su" }
+	-- 绘制星期表头
+	-- local weeknames = { "Mo", "Tu", "We", "Th", "Fr", "Sa", "Su" }
+	local weeknames = { "日", "一", "二", "三", "四", "五", "六" }
 	for i = 1, #weeknames do
 		obj.canvas[2 + i] = {
 			id = "cal_weekday",
 			type = "text",
 			text = weeknames[i],
 			textFont = "Courier",
-			textSize = 16,
-			textColor = calcolor,
+			textSize = 12,
+			textColor = cal_header_color,
 			textAlignment = "center",
 			frame = {
 				x = tostring((10 + (obj.calw - 20) / 8 * i) / obj.calw),
@@ -123,18 +150,26 @@ function obj:init()
 	end
 
 	-- Create 7x6 calendar table
+	local row, col
 	for i = 1, 6 do
 		for k = 1, 7 do
+			if k == 7 then
+				row = i + 1
+				col = 1
+			else
+				row = i
+				col = k + 1
+			end
 			obj.canvas[9 + 7 * (i - 1) + k] = {
 				type = "text",
 				text = "",
 				textFont = "Courier",
 				textSize = 16,
-				textColor = calcolor,
+				textColor = (col == 1 or col == 7) and weekend_color or calcolor,
 				textAlignment = "center",
 				frame = {
-					x = tostring((10 + (obj.calw - 20) / 8 * k) / obj.calw),
-					y = tostring((10 + (obj.calh - 20) / 8 * (i + 1)) / obj.calh),
+					x = tostring((10 + (obj.calw - 20) / 8 * col) / obj.calw),
+					y = tostring((10 + (obj.calh - 20) / 8 * (row + 1)) / obj.calh),
 					w = tostring((obj.calw - 20) / 8 / obj.calw),
 					h = tostring((obj.calh - 20) / 8 / obj.calh),
 				},
