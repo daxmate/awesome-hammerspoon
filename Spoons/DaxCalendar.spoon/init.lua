@@ -15,7 +15,10 @@ obj.homepage = "https://github.com/Hammerspoon/Spoons"
 obj.license = "MIT - https://opensource.org/licenses/MIT"
 
 obj.calw = 260
-obj.calh = 184
+obj.calh = 570
+obj.months = 3
+obj.cellw = (obj.calw - 20) / 8
+obj.cellh = (obj.calh - 20) / 8 / obj.months
 
 local function updateCalCanvas()
 	local chinese_months = {
@@ -66,8 +69,8 @@ local function updateCalCanvas()
 				obj.canvas[9 + caltable_idx].text = pushbacked_value
 			end
 			if pushbacked_value == math.tointeger(current_day) then
-				obj.canvas[58].frame.x = tostring((10 + (obj.calw - 20) / 8 * col) / obj.calw)
-				obj.canvas[58].frame.y = tostring((10 + (obj.calh - 20) / 8 * (row + 1)) / obj.calh)
+				obj.canvas[58].frame.x = tostring((10 + obj.cellw * col) / obj.calw)
+				obj.canvas[58].frame.y = tostring((10 + obj.cellh * (row + 1)) / obj.calh)
 			end
 		end
 	end
@@ -127,9 +130,9 @@ function obj:init()
 		textAlignment = "center",
 		frame = {
 			x = tostring(10 / obj.calw),
-			y = tostring(10 / obj.calw),
+			y = tostring(10 / obj.calw / 3),
 			w = tostring(1 - 20 / obj.calw),
-			h = tostring((obj.calh - 20) / 8 / obj.calh),
+			h = tostring((obj.calh - 20) / 8 / obj.calh / 3),
 		},
 	}
 
@@ -146,10 +149,10 @@ function obj:init()
 			textColor = cal_header_color,
 			textAlignment = "center",
 			frame = {
-				x = tostring((10 + (obj.calw - 20) / 8 * i) / obj.calw),
-				y = tostring((10 + (obj.calh - 20) / 8) / obj.calh),
-				w = tostring((obj.calw - 20) / 8 / obj.calw),
-				h = tostring((obj.calh - 20) / 8 / obj.calh),
+				x = tostring((10 + obj.cellw * i) / obj.calw),
+				y = tostring((10 + obj.cellh) / obj.calh),
+				w = tostring(obj.cellw / obj.calw),
+				h = tostring(obj.cellh / obj.calh),
 			},
 		}
 	end
@@ -173,10 +176,10 @@ function obj:init()
 				textColor = (col == 1 or col == 7) and weekend_color or calcolor,
 				textAlignment = "center",
 				frame = {
-					x = tostring((10 + (obj.calw - 20) / 8 * col) / obj.calw),
-					y = tostring((10 + (obj.calh - 20) / 8 * (row + 1)) / obj.calh),
-					w = tostring((obj.calw - 20) / 8 / obj.calw),
-					h = tostring((obj.calh - 20) / 8 / obj.calh),
+					x = tostring((10 + obj.cellw * col) / obj.calw),
+					y = tostring((10 + obj.cellh * (row + 1)) / obj.calh),
+					w = tostring(obj.cellw / obj.calw),
+					h = tostring(obj.cellh / obj.calh),
 				},
 			}
 		end
@@ -193,9 +196,9 @@ function obj:init()
 			textAlignment = "center",
 			frame = {
 				x = tostring(10 / obj.calw),
-				y = tostring((10 + (obj.calh - 20) / 8 * (i + 1)) / obj.calh),
-				w = tostring((obj.calw - 20) / 8 / obj.calw),
-				h = tostring((obj.calh - 20) / 8 / obj.calh),
+				y = tostring((10 + obj.cellh * (i + 1)) / obj.calh),
+				w = tostring(obj.cellw / obj.calw),
+				h = tostring(obj.cellh / obj.calh),
 			},
 		}
 	end
@@ -207,10 +210,10 @@ function obj:init()
 		fillColor = caltodaycolor,
 		roundedRectRadii = { xRadius = 3, yRadius = 3 },
 		frame = {
-			x = tostring((10 + (obj.calw - 20) / 8) / obj.calw),
-			y = tostring((10 + (obj.calh - 20) / 8 * 2) / obj.calh),
-			w = tostring((obj.calw - 20) / 8 / obj.calw),
-			h = tostring((obj.calh - 20) / 8 / obj.calh),
+			x = tostring((10 + obj.cellw) / obj.calw),
+			y = tostring((10 + obj.cellh * 2) / obj.calh),
+			w = tostring(obj.cellw / obj.calw),
+			h = tostring(obj.cellh / obj.calh),
 		},
 	}
 
