@@ -32,10 +32,15 @@ local function updateCalCanvas()
 		"十一月",
 		"十二月",
 	}
-	local current_year = os.date("%Y")
-	local current_month = os.date("%m")
-	local current_day = os.date("%d")
-	local firstday_of_nextmonth = os.time({ year = current_year, month = current_month + 1, day = 1 })
+	local current_date = os.date("*t")
+	local current_year = current_date.year
+	local current_month = current_date.month
+	local current_day = current_date.day
+	local firstday_of_nextmonth = os.time({
+		year = current_month == 12 and current_year + 1 or current_year,
+		month = (current_month + 1) % 12,
+		day = 1,
+	})
 	local maxday_of_currentmonth = os.date("*t", firstday_of_nextmonth - 24 * 60 * 60).day
 	local weekday_of_firstday = os.date("*t", os.time({ year = current_year, month = current_month, day = 1 })).wday
 	local needed_rownum = math.ceil((weekday_of_firstday + maxday_of_currentmonth - 1) / 7)
@@ -85,7 +90,7 @@ end
 function obj:init()
 	local caltodaycolor = { red = 1, blue = 1, green = 1, alpha = 0.3 }
 	local calcolor = { red = 235 / 255, blue = 235 / 255, green = 235 / 255 }
-	local cal_header_color = {hex = '#78FF78'}
+	local cal_header_color = { hex = "#78FF78" }
 	local calbgcolor = { red = 0, blue = 0, green = 0, alpha = 0.3 }
 	local weeknumcolor = { red = 246 / 255, blue = 246 / 255, green = 246 / 255, alpha = 0.5 }
 	local weekend_color = { hex = "#FF7878" }
