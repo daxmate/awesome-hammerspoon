@@ -111,6 +111,7 @@ function obj:init()
 	local calcolor = { red = 235 / 255, blue = 235 / 255, green = 235 / 255 }
 	local cal_header_color = { hex = "#78FF78" }
 	local calbgcolor = { red = 0, blue = 0, green = 0, alpha = 0.3 }
+	local cal_transparent_bg = { red = 0, blue = 0, green = 0, alpha = 0 }
 	local weeknumcolor = { red = 246 / 255, blue = 246 / 255, green = 246 / 255, alpha = 0.5 }
 	local weekend_color = { hex = "#FF7878" }
 	local cscreen = hs.screen.mainScreen()
@@ -134,7 +135,7 @@ function obj:init()
 			id = "cal_bg",
 			type = "rectangle",
 			action = "fill",
-			fillColor = calbgcolor,
+			fillColor = month_index == 1 and calbgcolor or cal_transparent_bg,
 			roundedRectRadii = { xRadius = 10, yRadius = 10 },
 		}
 
