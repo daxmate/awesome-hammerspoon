@@ -20,6 +20,16 @@ obj.calh = 190 * obj.months
 obj.cellw = (obj.calw - 20) / 8
 obj.cellh = (obj.calh - 20) / 8 / obj.months
 
+local function sunday_first_weekday(date)
+	local wday = date.wday
+	if wday == 7 then
+		return 1
+	else
+		return wday + 1
+	end
+end
+
+
 local function updateCalCanvas()
 	local offset = obj.calh / obj.months
 	local chinese_months = {
