@@ -177,17 +177,9 @@ function obj:init()
 		end
 
 		-- Create 7x6 calendar table
-		local row, col
-		for i = 1, 6 do
-			for k = 1, 7 do
-				if k == 7 then
-					row = i + 1
-					col = 1
-				else
-					row = i
-					col = k + 1
-				end
-				obj.canvas[9 + 7 * (i - 1) + k + (month_index - 1) * 58] = {
+		for row = 1, 6 do
+			for col = 1, 7 do
+				obj.canvas[9 + 7 * (row - 1) + col + (month_index - 1) * 58] = {
 					type = "text",
 					text = "",
 					textFont = "Courier",
