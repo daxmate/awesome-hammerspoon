@@ -29,7 +29,6 @@ local function sunday_first_weekday(date)
 	end
 end
 
-
 local function updateCalCanvas()
 	local offset = obj.calh / obj.months
 	local chinese_months = {
@@ -75,7 +74,7 @@ local function updateCalCanvas()
 					col = k + 1
 				end
 				local caltable_idx = 7 * (i - 1) + k + (month_index - 1) * 58
-				local pushbacked_value = 7 * (i - 1) + k - weekday_of_firstday + 2
+				local pushbacked_value = 7 * (i - 1) + k - weekday_of_firstday + 1
 				if pushbacked_value <= 0 or pushbacked_value > maxday_of_month then
 					obj.canvas[9 + caltable_idx].text = ""
 				else
@@ -83,7 +82,7 @@ local function updateCalCanvas()
 				end
 				if month == current_month then
 					if pushbacked_value == math.tointeger(current_day) then
-						obj.canvas[58 * month_index].frame.x = tostring((10 + obj.cellw * col) / obj.calw)
+						obj.canvas[58 * month_index].frame.x = tostring((10 + obj.cellw * (col - 1)) / obj.calw)
 						obj.canvas[58 * month_index].frame.y =
 							tostring((10 + obj.cellh * (row + 1) + offset * (month_index - 1)) / obj.calh)
 					end
