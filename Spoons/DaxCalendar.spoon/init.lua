@@ -55,6 +55,9 @@ local function updateCalCanvas()
 		local month = current_month + month_diff
 		local year = month < 1 and current_year - 1 or month > 12 and current_year + 1 or current_year
 		month = (month + 12) % 12
+		if month == 0 then
+			month = 12
+		end
 		local next_month = (month + 1) % 12
 		local firstday_of_next_month = os.time({ year = year, month = next_month, day = 1 })
 		local maxday_of_month = os.date("*t", firstday_of_next_month - 24 * 60 * 60).day
