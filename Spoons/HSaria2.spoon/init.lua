@@ -33,7 +33,7 @@ obj.refresh_interval = 1
 ---  * secret - A string specifying host secret
 function obj:connectToHost(hostaddr, secret)
     local jsonreq = {
-        id = hs.hash.SHA1(os.time()),
+        id = hs.hash.SHA1(tostring(os.time())),
         jsonrpc = "2.0",
         method = "aria2.getVersion",
         params = { "token:" .. secret }
@@ -111,19 +111,19 @@ function obj:createAndRefreshPanel()
     if obj.rpc_host and obj.rpc_secret then
         local tasks_overview_req = {
             {
-                id = hs.hash.SHA1(os.time()),
+                id = hs.hash.SHA1(tostring(os.time())),
                 jsonrpc = "2.0",
                 method = "aria2.tellActive",
                 params = { "token:" .. obj.rpc_secret }
             },
             {
-                id = hs.hash.SHA1(os.time()),
+                id = hs.hash.SHA1(tostring(os.time())),
                 jsonrpc = "2.0",
                 method = "aria2.tellWaiting",
                 params = { "token:" .. obj.rpc_secret, 0, 5 }
             },
             {
-                id = hs.hash.SHA1(os.time()),
+                id = hs.hash.SHA1(tostring(os.time())),
                 jsonrpc = "2.0",
                 method = "aria2.tellStopped",
                 params = { "token:" .. obj.rpc_secret, 0, 5 }
@@ -242,7 +242,7 @@ function obj:intervalRequest()
     -- Compose all requests into one, so we don't have to request too frequently from rpc server
     local req_package = {}
     local globalstat_req = {
-        id = hs.hash.SHA1(os.time()),
+        id = hs.hash.SHA1(tostring(os.time())),
         jsonrpc = "2.0",
         method = "aria2.getGlobalStat",
         params = { "token:" .. obj.rpc_secret }
@@ -251,7 +251,7 @@ function obj:intervalRequest()
     if not obj.stopped_queue_cached then obj.stopped_request_required = true end
     if obj.stopped_request_required then
         local stopped_req = {
-            id = hs.hash.SHA1(os.time()),
+            id = hs.hash.SHA1(tostring(os.time())),
             jsonrpc = "2.0",
             method = "aria2.tellStopped",
             params = { "token:" .. obj.rpc_secret, 0, 100 }
@@ -279,7 +279,7 @@ function obj:intervalRequest()
     if obj.active_request_required then
         for i=1,obj.activeitemcount do
             local tmptbl = {
-                id = hs.hash.SHA1(os.time()),
+                id = hs.hash.SHA1(tostring(os.time())),
                 jsonrpc = "2.0",
                 method = "aria2.tellStatus",
                 params = { "token:" .. obj.rpc_secret, obj.panelItems[i].gid }
@@ -467,7 +467,7 @@ function obj:newTask(tasktype, urls, hostaddr, secret)
     local secret = secret or obj.rpc_secret
     if hostaddr and secret then
         local task_req = {
-            id = hs.hash.SHA1(os.time()),
+            id = hs.hash.SHA1(tostring(os.time())),
             jsonrpc = "2.0",
             method = "aria2." .. tasktype
         }
@@ -478,7 +478,7 @@ function obj:newTask(tasktype, urls, hostaddr, secret)
                 local task_req = {}
                 for _,val in pairs(urls) do
                     local task_item = {
-                        id = hs.hash.SHA1(os.time()),
+                        id = hs.hash.SHA1(tostring(os.time())),
                         jsonrpc = "2.0",
                         method = "aria2." .. tasktype,
                         params = { "token:" .. secret, {val} }
@@ -523,7 +523,7 @@ function obj:sendCommand(command, gid, hostaddr, secret)
     local secret = secret or obj.rpc_secret
     if hostaddr and secret then
         local action_req = {
-            id = hs.hash.SHA1(os.time()),
+            id = hs.hash.SHA1(tostring(os.time())),
             jsonrpc = "2.0",
             method = "aria2." .. command
         }
