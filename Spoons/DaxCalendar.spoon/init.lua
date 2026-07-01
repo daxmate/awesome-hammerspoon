@@ -66,30 +66,23 @@ local function updateCalCanvas()
 		local needed_rownum = math.ceil((weekday_of_firstday + maxday_of_month - 1) / 7)
 		obj.canvas[2 + (month_index - 1) * 58].text = title_string
 
-		local row, col
-		for i = 1, needed_rownum do
-			for k = 1, 7 do
-				if k == 7 then
-					row = i + 1
-					col = 1
-				else
-					row = i
-					col = k + 1
-				end
-				local caltable_idx = 7 * (i - 1) + k + (month_index - 1) * 58
-				local pushbacked_value = 7 * (i - 1) + k - weekday_of_firstday + 1
-				if pushbacked_value <= 0 or pushbacked_value > maxday_of_month then
+		for row_i = 1, needed_rownum do
+			for col_i = 1, 7 do
+				-- col_i: 1=Sunday col, 2=Monday, ..., 7=Saturday
+				-- Lua wday: 1=Sunday, ..., 7=Saturday
+				local day_number = 7 * (row_i - 1) + col_i - weekday_of_firstday + 1
+				local caltable_idx = 7 * (row_i - 1) + col_i + (month_index - 1) * 58
+				if day_number <= 0 or day_number > maxday_of_month then
 					obj.canvas[9 + caltable_idx].text = ""
 				else
-					obj.canvas[9 + caltable_idx].text = pushbacked_value
+					obj.canvas[9 + caltable_idx].text = day_number
 				end
-				if month == current_month then
-					if pushbacked_value == math.tointeger(current_day) then
-						obj.canvas[58 * month_index].frame.x = tostring((10 + obj.cellw * (col - 1)) / obj.calw)
-						obj.canvas[58 * month_index].frame.y =
-							tostring((10 + obj.cellh * (row + 1) + offset * (month_index - 1)) / obj.calh)
-					end
-				else
+				if month == current_month and day_number == current_day then
+					-- col_i maps directly to canvas column (1=Sun, 7=Sat)
+					obj.canvas[58 * month_index].frame.x = tostring((10 + obj.cellw * col_i) / obj.calw)
+					obj.canvas[58 * month_index].frame.y =
+						tostring((10 + obj.cellh * (row_i + 1) + offset * (month_index - 1)) / obj.calh)
+				elseif month ~= current_month then
 					obj.canvas[58 * month_index].fillColor = { red = 0, blue = 0, green = 0, alpha = 0 }
 				end
 			end
@@ -132,7 +125,7 @@ function obj:init()
 
 	obj.canvas = hs.canvas
 		.new({
-			x = cres.w - obj.calw - 20,
+			x = 20,
 			y = cres.h - obj.calh - 20,
 			w = obj.calw,
 			h = obj.calh,
