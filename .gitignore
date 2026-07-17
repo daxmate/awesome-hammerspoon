@@ -44,3 +44,6 @@ luac.out
 
 
 private
+
+# DaxCalendar cache
+Spoons/DaxCalendar.spoon/holiday_cache.json

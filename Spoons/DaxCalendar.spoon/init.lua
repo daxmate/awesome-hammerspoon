@@ -14,6 +14,14 @@ obj.author = "ashfinal <ashfinal@gmail.com>"
 obj.homepage = "https://github.com/Hammerspoon/Spoons"
 obj.license = "MIT - https://opensource.org/licenses/MIT"
 
+-- Load Chinese holidays module
+local holidays = dofile(hs.configdir .. "/Spoons/DaxCalendar.spoon/holidays.lua"):load()
+
+-- Calendar color palette (shared by init and updateCalCanvas)
+local calcolor        = { red = 235/255, blue = 235/255, green = 235/255 }
+local weekend_color   = { hex = "#FF7878" }
+local holiday_color   = { hex = "#FF6B35" }
+
 obj.calw = 260
 obj.months = 3
 obj.calh = 190 * obj.months
@@ -76,6 +84,15 @@ local function updateCalCanvas()
 					obj.canvas[9 + caltable_idx].text = ""
 				else
 					obj.canvas[9 + caltable_idx].text = day_number
+					-- Apply holiday / weekend coloring
+					local isHol, _ = holidays:isHoliday(year, month, day_number)
+					if isHol then
+						obj.canvas[9 + caltable_idx].textColor = holiday_color
+					elseif col_i == 1 or col_i == 7 then
+						obj.canvas[9 + caltable_idx].textColor = weekend_color
+					else
+						obj.canvas[9 + caltable_idx].textColor = calcolor
+					end
 				end
 				if month == current_month and day_number == current_day then
 					-- col_i maps directly to canvas column (1=Sun, 7=Sat)
@@ -113,12 +130,10 @@ end
 
 function obj:init()
 	local caltodaycolor = { red = 1, blue = 1, green = 1, alpha = 0.3 }
-	local calcolor = { red = 235 / 255, blue = 235 / 255, green = 235 / 255 }
 	local cal_header_color = { hex = "#78FF78" }
 	local calbgcolor = { red = 0, blue = 0, green = 0, alpha = 0.3 }
 	local cal_transparent_bg = { red = 0, blue = 0, green = 0, alpha = 0 }
 	local weeknumcolor = { red = 246 / 255, blue = 246 / 255, green = 246 / 255, alpha = 0.5 }
-	local weekend_color = { hex = "#FF7878" }
 	local cscreen = hs.screen.mainScreen()
 	local cres = cscreen:fullFrame()
 	local offset = obj.calh / obj.months
@@ -233,6 +248,12 @@ function obj:init()
 			},
 		}
 	end
+
+	-- Fetch holiday data for current and neighboring years
+	local currentYear = os.date("*t").year
+	holidays:fetchYear(currentYear - 1)
+	holidays:fetchYear(currentYear)
+	holidays:fetchYear(currentYear + 1)
 
 	if obj.timer == nil then
 		obj.timer = hs.timer.doEvery(1800, function()

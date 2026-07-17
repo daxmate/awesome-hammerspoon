@@ -23,7 +23,7 @@
     "Constructor" : [
 
     ],
-    "doc" : "A calendar inset into the desktop\n\nDownload: [https:\/\/github.com\/Hammerspoon\/Spoons\/raw\/master\/Spoons\/Calendar.spoon.zip](https:\/\/github.com\/Hammerspoon\/Spoons\/raw\/master\/Spoons\/Calendar.spoon.zip)",
+    "doc" : "A calendar inset into the desktop with Chinese holiday display\n\nDownload: [https://github.com/Hammerspoon/Spoons/raw/master/Spoons/Calendar.spoon.zip](https://github.com/Hammerspoon/Spoons/raw/master/Spoons/Calendar.spoon.zip)\n\nHolidays: Shows Chinese public holidays with warm orange-red color.\nData fetched from holiday.ailcc.com API with embedded fallback.",
     "Field" : [
 
     ],
@@ -37,5 +37,77 @@
 
     ],
     "name" : "Calendar"
+  },
+  {
+    "Constant" : [
+
+    ],
+    "submodules" : [
+
+    ],
+    "Function" : [
+
+    ],
+    "Variable" : [
+
+    ],
+    "stripped_doc" : [
+
+    ],
+    "Deprecated" : [
+
+    ],
+    "type" : "Module",
+    "desc" : "Chinese holiday data module",
+    "Constructor" : [
+
+    ],
+    "doc" : "Chinese holiday data module for DaxCalendar.\nFetches from holiday.ailcc.com API, falls back to embedded data.\nProvides holiday lookup by (year, month, day).",
+    "Field" : [
+
+    ],
+    "Command" : [
+
+    ],
+    "Method" : [
+      "load",
+      "fetchYear",
+      "isHoliday",
+      "monthHolidays",
+      "holidayColor"
+    ],
+    "items" : [
+      {
+        "type" : "Method",
+        "name" : "load",
+        "desc" : "Load embedded data + cached data",
+        "doc" : "Load embedded data + cached data"
+      },
+      {
+        "type" : "Method",
+        "name" : "fetchYear",
+        "desc" : "Fetch holiday data from remote API for a given year",
+        "doc" : "Fetch holiday data from remote API for a given year"
+      },
+      {
+        "type" : "Method",
+        "name" : "isHoliday",
+        "desc" : "Check if a date is a holiday. Returns (true, {name, abbr}) or (false, nil)",
+        "doc" : "Check if a date is a holiday. Returns (true, {name, abbr}) or (false, nil)"
+      },
+      {
+        "type" : "Method",
+        "name" : "monthHolidays",
+        "desc" : "Get a table of holidays for a specific (year, month)",
+        "doc" : "Get a table of holidays for a specific (year, month)"
+      },
+      {
+        "type" : "Method",
+        "name" : "holidayColor",
+        "desc" : "Returns color table for holiday text (#FF6B35 warm orange-red)",
+        "doc" : "Returns color table for holiday text (#FF6B35 warm orange-red)"
+      }
+    ],
+    "name" : "Holidays"
   }
 ]
