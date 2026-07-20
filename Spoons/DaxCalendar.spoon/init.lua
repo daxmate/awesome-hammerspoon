@@ -18,9 +18,10 @@ obj.license = "MIT - https://opensource.org/licenses/MIT"
 local holidays = dofile(hs.configdir .. "/Spoons/DaxCalendar.spoon/holidays.lua"):load()
 
 -- Calendar color palette (shared by init and updateCalCanvas)
-local calcolor        = { red = 235/255, blue = 235/255, green = 235/255 }
-local weekend_color   = { hex = "#FF7878" }
-local holiday_color   = { hex = "#FF6B35" }
+local calcolor              = { red = 235/255, blue = 235/255, green = 235/255 }
+local weekend_color         = { hex = "#FF7878" }
+local holiday_color         = { hex = "#FFB800" }   -- bright amber/gold, distinct from weekend pink-red
+local japan_holiday_color   = { hex = "#4FC3F7" }   -- sky blue, distinct from both
 
 obj.calw = 260
 obj.months = 3
@@ -85,9 +86,13 @@ local function updateCalCanvas()
 				else
 					obj.canvas[9 + caltable_idx].text = day_number
 					-- Apply holiday / weekend coloring
+					-- Priority: Chinese holiday > Japanese holiday > weekend > normal
 					local isHol, _ = holidays:isHoliday(year, month, day_number)
+					local isJpHol, _ = holidays:isJapaneseHoliday(year, month, day_number)
 					if isHol then
 						obj.canvas[9 + caltable_idx].textColor = holiday_color
+					elseif isJpHol then
+						obj.canvas[9 + caltable_idx].textColor = japan_holiday_color
 					elseif col_i == 1 or col_i == 7 then
 						obj.canvas[9 + caltable_idx].textColor = weekend_color
 					else
@@ -249,11 +254,16 @@ function obj:init()
 		}
 	end
 
-	-- Fetch holiday data for current and neighboring years
+	-- Fetch Chinese holiday data for current and neighboring years
 	local currentYear = os.date("*t").year
 	holidays:fetchYear(currentYear - 1)
 	holidays:fetchYear(currentYear)
 	holidays:fetchYear(currentYear + 1)
+
+	-- Fetch Japanese holiday data for current and neighboring years
+	holidays:fetchJapaneseYear(currentYear - 1)
+	holidays:fetchJapaneseYear(currentYear)
+	holidays:fetchJapaneseYear(currentYear + 1)
 
 	if obj.timer == nil then
 		obj.timer = hs.timer.doEvery(1800, function()

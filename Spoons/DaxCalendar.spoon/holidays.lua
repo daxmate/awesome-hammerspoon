@@ -26,6 +26,30 @@ local HOLIDAY_ABBR = {
 }
 
 -- ============================================================
+-- Japanese holiday abbreviation mapping
+-- ============================================================
+local JP_ABBR = {
+    ["元日"]         = "元",
+    ["成人の日"]     = "成",
+    ["建国記念の日"] = "建",
+    ["天皇誕生日"]   = "天",
+    ["春分の日"]     = "春",
+    ["昭和の日"]     = "昭",
+    ["憲法記念日"]   = "憲",
+    ["みどりの日"]   = "緑",
+    ["こどもの日"]   = "子",
+    ["海の日"]       = "海",
+    ["山の日"]       = "山",
+    ["敬老の日"]     = "敬",
+    ["秋分の日"]     = "秋",
+    ["スポーツの日"] = "ス",
+    ["文化の日"]     = "文",
+    ["勤労感謝の日"] = "勤",
+    ["振替休日"]     = "振",
+    ["国民の休日"]   = "休",
+}
+
+-- ============================================================
 -- Embedded fallback data (will be augmented by API fetch)
 -- ============================================================
 local EMBEDDED = {
@@ -100,10 +124,78 @@ local EMBEDDED = {
 }
 
 -- ============================================================
+-- Embedded Japanese holiday data (fallback)
+-- ============================================================
+local JP_EMBEDDED = {
+    ["2025"] = {
+        ["01-01"] = { name = "元日",         abbr = "元" },
+        ["01-13"] = { name = "成人の日",     abbr = "成" },
+        ["02-11"] = { name = "建国記念の日", abbr = "建" },
+        ["02-23"] = { name = "天皇誕生日",   abbr = "天" },
+        ["02-24"] = { name = "振替休日",     abbr = "振" },
+        ["03-20"] = { name = "春分の日",     abbr = "春" },
+        ["04-29"] = { name = "昭和の日",     abbr = "昭" },
+        ["05-03"] = { name = "憲法記念日",   abbr = "憲" },
+        ["05-04"] = { name = "みどりの日",   abbr = "緑" },
+        ["05-05"] = { name = "こどもの日",   abbr = "子" },
+        ["05-06"] = { name = "振替休日",     abbr = "振" },
+        ["07-21"] = { name = "海の日",       abbr = "海" },
+        ["08-11"] = { name = "山の日",       abbr = "山" },
+        ["09-15"] = { name = "敬老の日",     abbr = "敬" },
+        ["09-23"] = { name = "秋分の日",     abbr = "秋" },
+        ["10-13"] = { name = "スポーツの日", abbr = "ス" },
+        ["11-03"] = { name = "文化の日",     abbr = "文" },
+        ["11-23"] = { name = "勤労感謝の日", abbr = "勤" },
+        ["11-24"] = { name = "振替休日",     abbr = "振" },
+    },
+    ["2026"] = {
+        ["01-01"] = { name = "元日",         abbr = "元" },
+        ["01-12"] = { name = "成人の日",     abbr = "成" },
+        ["02-11"] = { name = "建国記念の日", abbr = "建" },
+        ["02-23"] = { name = "天皇誕生日",   abbr = "天" },
+        ["03-20"] = { name = "春分の日",     abbr = "春" },
+        ["04-29"] = { name = "昭和の日",     abbr = "昭" },
+        ["05-03"] = { name = "憲法記念日",   abbr = "憲" },
+        ["05-04"] = { name = "みどりの日",   abbr = "緑" },
+        ["05-05"] = { name = "こどもの日",   abbr = "子" },
+        ["05-06"] = { name = "振替休日",     abbr = "振" },
+        ["07-20"] = { name = "海の日",       abbr = "海" },
+        ["08-11"] = { name = "山の日",       abbr = "山" },
+        ["09-21"] = { name = "敬老の日",     abbr = "敬" },
+        ["09-22"] = { name = "国民の休日",   abbr = "休" },
+        ["09-23"] = { name = "秋分の日",     abbr = "秋" },
+        ["10-12"] = { name = "スポーツの日", abbr = "ス" },
+        ["11-03"] = { name = "文化の日",     abbr = "文" },
+        ["11-23"] = { name = "勤労感謝の日", abbr = "勤" },
+    },
+    ["2027"] = {
+        ["01-01"] = { name = "元日",         abbr = "元" },
+        ["01-11"] = { name = "成人の日",     abbr = "成" },
+        ["02-11"] = { name = "建国記念の日", abbr = "建" },
+        ["02-23"] = { name = "天皇誕生日",   abbr = "天" },
+        ["03-21"] = { name = "春分の日",     abbr = "春" },
+        ["03-22"] = { name = "振替休日",     abbr = "振" },
+        ["04-29"] = { name = "昭和の日",     abbr = "昭" },
+        ["05-03"] = { name = "憲法記念日",   abbr = "憲" },
+        ["05-04"] = { name = "みどりの日",   abbr = "緑" },
+        ["05-05"] = { name = "こどもの日",   abbr = "子" },
+        ["07-19"] = { name = "海の日",       abbr = "海" },
+        ["08-11"] = { name = "山の日",       abbr = "山" },
+        ["09-20"] = { name = "敬老の日",     abbr = "敬" },
+        ["09-23"] = { name = "秋分の日",     abbr = "秋" },
+        ["10-11"] = { name = "スポーツの日", abbr = "ス" },
+        ["11-03"] = { name = "文化の日",     abbr = "文" },
+        ["11-23"] = { name = "勤労感謝の日", abbr = "勤" },
+    },
+}
+
+-- ============================================================
 -- Internal state
 -- ============================================================
 local data  = {}
 local cache = {}
+local jp_data  = {}
+local jp_cache = {}
 
 -- ============================================================
 -- Helpers
@@ -170,21 +262,63 @@ local function loadCache()
 end
 
 -- ============================================================
+-- Japanese holiday cache save / load (defined before load())
+-- ============================================================
+
+local function saveJpCache()
+    local path = hs.configdir .. "/Spoons/DaxCalendar.spoon/holiday_jp_cache.json"
+    local ok, err = hs.json.encode(jp_data)
+    if ok then
+        local f = io.open(path, "w")
+        if f then
+            f:write(ok)
+            f:close()
+        end
+    end
+end
+
+local function loadJpCache()
+    local path = hs.configdir .. "/Spoons/DaxCalendar.spoon/holiday_jp_cache.json"
+    local f = io.open(path, "r")
+    if f then
+        local raw = f:read("*a")
+        f:close()
+        local ok, decoded = pcall(hs.json.decode, raw)
+        if ok and decoded then
+            for yr, days in pairs(decoded) do
+                jp_data[yr] = days
+            end
+            return true
+        end
+    end
+    return false
+end
+
+-- ============================================================
 -- Public Methods
 -- ============================================================
 
 --- Holidays:load()
 --- Load embedded data + cached data
 function obj:load()
-    -- Load embedded
+    -- Load embedded Chinese holidays
     for yr, days in pairs(EMBEDDED) do
         data[yr] = data[yr] or {}
         for k, v in pairs(days) do
             data[yr][k] = v
         end
     end
-    -- Load cached (may override embedded with API-fresh data)
+    -- Load cached Chinese holidays (may override embedded with API-fresh data)
     loadCache()
+    -- Load embedded Japanese holidays
+    for yr, days in pairs(JP_EMBEDDED) do
+        jp_data[yr] = jp_data[yr] or {}
+        for k, v in pairs(days) do
+            jp_data[yr][k] = v
+        end
+    end
+    -- Load cached Japanese holidays
+    loadJpCache()
     return self
 end
 
@@ -215,6 +349,54 @@ function obj:fetchYear(year, callback)
         hs.printf("[DaxCalendar] Failed to fetch holidays for " .. yr)
         if callback then callback(false) end
     end)
+end
+
+--- Holidays:fetchJapaneseYear(year, [callback])
+--- Fetch Japanese holiday data from holidays-jp.github.io
+function obj:fetchJapaneseYear(year, callback)
+    local yr = tostring(year)
+    local url = "https://holidays-jp.github.io/api/v1/" .. yr .. "/date.json"
+
+    hs.http.get(url, nil, function(code, body)
+        if code == 200 then
+            local ok, result = pcall(hs.json.decode, body)
+            if ok and result then
+                jp_data[yr] = jp_data[yr] or {}
+                for dateStr, name in pairs(result) do
+                    -- dateStr is "YYYY-MM-DD", extract month-day
+                    local md = dateStr:sub(6, 10) -- "MM-DD"
+                    local baseName = name
+                    local abbr = JP_ABBR[baseName] or baseName:sub(1, 1)
+                    jp_data[yr][md] = { name = baseName, abbr = abbr }
+                end
+                saveJpCache()
+                if callback then callback(true) end
+                return
+            end
+        end
+        hs.printf("[DaxCalendar] Failed to fetch Japanese holidays for " .. yr)
+        if callback then callback(false) end
+    end)
+end
+
+--- Holidays:isJapaneseHoliday(year, month, day)
+--- Returns (true, {name, abbr, country="JP"}) or (false, nil)
+function obj:isJapaneseHoliday(year, month, day)
+    local yr = tostring(year)
+    local key = dateKey(year, month, day)
+    local yd = jp_data[yr]
+    if yd and yd[key] then
+        local info = yd[key]
+        info.country = "JP"
+        return true, info
+    end
+    return false, nil
+end
+
+--- Holidays:japanHolidayColor()
+--- Returns color table for Japanese holiday text
+function obj:japanHolidayColor()
+    return { hex = "#4FC3F7" }  -- sky blue
 end
 
 --- Holidays:isHoliday(year, month, day)
@@ -248,7 +430,7 @@ end
 --- Holidays:holidayColor()
 --- Returns color table for holiday text
 function obj:holidayColor()
-    return { hex = "#FF6B35" }  -- warm orange-red
+    return { hex = "#FFB800" }  -- bright amber/gold
 end
 
 return obj
