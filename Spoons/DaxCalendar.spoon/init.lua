@@ -23,11 +23,16 @@ local weekend_color         = { hex = "#FF7878" }
 local holiday_color         = { hex = "#FFB800" }   -- bright amber/gold, distinct from weekend pink-red
 local japan_holiday_color   = { hex = "#4FC3F7" }   -- sky blue, distinct from both
 
+-- Per-month canvas element block size (58 + 42 holiday labels)
+local MONTH_BLOCK = 100
+
 obj.calw = 260
 obj.months = 3
 obj.calh = 190 * obj.months
 obj.cellw = (obj.calw - 20) / 8
 obj.cellh = (obj.calh - 20) / 8 / obj.months
+-- Holiday label font size (overlaid at top-left of date cells)
+local LABEL_FONT_SIZE = 7
 
 local function sunday_first_weekday(date)
 	local wday = date.wday
@@ -73,39 +78,49 @@ local function updateCalCanvas()
 		local title_string = tostring(year) .. "年" .. " " .. chinese_months[month]
 		local weekday_of_firstday = os.date("*t", os.time({ year = year, month = month, day = 1 })).wday
 		local needed_rownum = math.ceil((weekday_of_firstday + maxday_of_month - 1) / 7)
-		obj.canvas[2 + (month_index - 1) * 58].text = title_string
+		obj.canvas[2 + (month_index - 1) * MONTH_BLOCK].text = title_string
 
 		for row_i = 1, needed_rownum do
 			for col_i = 1, 7 do
 				-- col_i: 1=Sunday col, 2=Monday, ..., 7=Saturday
 				-- Lua wday: 1=Sunday, ..., 7=Saturday
 				local day_number = 7 * (row_i - 1) + col_i - weekday_of_firstday + 1
-				local caltable_idx = 7 * (row_i - 1) + col_i + (month_index - 1) * 58
+				local caltable_idx = 7 * (row_i - 1) + col_i + (month_index - 1) * MONTH_BLOCK
 				if day_number <= 0 or day_number > maxday_of_month then
 					obj.canvas[9 + caltable_idx].text = ""
 				else
 					obj.canvas[9 + caltable_idx].text = day_number
 					-- Apply holiday / weekend coloring
 					-- Priority: Chinese holiday > Japanese holiday > weekend > normal
-					local isHol, _ = holidays:isHoliday(year, month, day_number)
-					local isJpHol, _ = holidays:isJapaneseHoliday(year, month, day_number)
+					local isHol, holData = holidays:isHoliday(year, month, day_number)
+					local isJpHol, jpHolData = holidays:isJapaneseHoliday(year, month, day_number)
+					-- Update abbreviation label (starts at index 58 within each month block)
+					local label_idx = 9 + caltable_idx + 48  -- 58 - (9+42_first_cell) offset
+					-- equivalent to: 57 + 7*(row_i-1) + col_i + (month_index-1)*MONTH_BLOCK
 					if isHol then
 						obj.canvas[9 + caltable_idx].textColor = holiday_color
+						obj.canvas[label_idx].text = holData.abbr or ""
+						obj.canvas[label_idx].textColor = holiday_color
 					elseif isJpHol then
 						obj.canvas[9 + caltable_idx].textColor = japan_holiday_color
-					elseif col_i == 1 or col_i == 7 then
-						obj.canvas[9 + caltable_idx].textColor = weekend_color
+						obj.canvas[label_idx].text = jpHolData.abbr or ""
+						obj.canvas[label_idx].textColor = japan_holiday_color
 					else
-						obj.canvas[9 + caltable_idx].textColor = calcolor
+						obj.canvas[label_idx].text = ""
+						if col_i == 1 or col_i == 7 then
+							obj.canvas[9 + caltable_idx].textColor = weekend_color
+						else
+							obj.canvas[9 + caltable_idx].textColor = calcolor
+						end
 					end
 				end
 				if month == current_month and day_number == current_day then
 					-- col_i maps directly to canvas column (1=Sun, 7=Sat)
-					obj.canvas[58 * month_index].frame.x = tostring((10 + obj.cellw * col_i) / obj.calw)
-					obj.canvas[58 * month_index].frame.y =
+					obj.canvas[MONTH_BLOCK * month_index].frame.x = tostring((10 + obj.cellw * col_i) / obj.calw)
+					obj.canvas[MONTH_BLOCK * month_index].frame.y =
 						tostring((10 + obj.cellh * (row_i + 1) + offset * (month_index - 1)) / obj.calh)
 				elseif month ~= current_month then
-					obj.canvas[58 * month_index].fillColor = { red = 0, blue = 0, green = 0, alpha = 0 }
+					obj.canvas[MONTH_BLOCK * month_index].fillColor = { red = 0, blue = 0, green = 0, alpha = 0 }
 				end
 			end
 		end
@@ -120,9 +135,9 @@ local function updateCalCanvas()
 		end
 		for i = 1, 6 do
 			local yearweek_rowvalue = math.tointeger(yearweek_of_firstday) + i - 1
-			obj.canvas[51 + i + (month_index - 1) * 58].text = yearweek_rowvalue
+			obj.canvas[51 + i + (month_index - 1) * MONTH_BLOCK].text = yearweek_rowvalue
 			if i > needed_rownum then
-				obj.canvas[51 + i + (month_index - 1) * 58].text = ""
+				obj.canvas[51 + i + (month_index - 1) * MONTH_BLOCK].text = ""
 			end
 		end
 		-- trim the canvas
@@ -156,7 +171,7 @@ function obj:init()
 	obj.canvas:level(hs.canvas.windowLevels.desktopIcon)
 
 	for month_index = 1, obj.months do
-		obj.canvas[1 + (month_index - 1) * 58] = {
+		obj.canvas[1 + (month_index - 1) * MONTH_BLOCK] = {
 			id = "cal_bg",
 			type = "rectangle",
 			action = "fill",
@@ -164,7 +179,7 @@ function obj:init()
 			roundedRectRadii = { xRadius = 10, yRadius = 10 },
 		}
 
-		obj.canvas[2 + (month_index - 1) * 58] = {
+		obj.canvas[2 + (month_index - 1) * MONTH_BLOCK] = {
 			id = "cal_title",
 			type = "text",
 			text = "",
@@ -184,7 +199,7 @@ function obj:init()
 		-- local weeknames = { "Mo", "Tu", "We", "Th", "Fr", "Sa", "Su" }
 		local weeknames = { "日", "一", "二", "三", "四", "五", "六" }
 		for i = 1, #weeknames do
-			obj.canvas[2 + i + (month_index - 1) * 58] = {
+			obj.canvas[2 + i + (month_index - 1) * MONTH_BLOCK] = {
 				id = "cal_weekday",
 				type = "text",
 				text = weeknames[i],
@@ -204,7 +219,7 @@ function obj:init()
 		-- Create 7x6 calendar table
 		for row = 1, 6 do
 			for col = 1, 7 do
-				obj.canvas[9 + 7 * (row - 1) + col + (month_index - 1) * 58] = {
+				obj.canvas[9 + 7 * (row - 1) + col + (month_index - 1) * MONTH_BLOCK] = {
 					type = "text",
 					text = "",
 					textFont = "Courier",
@@ -223,7 +238,7 @@ function obj:init()
 
 		-- Create yearweek column
 		for i = 1, 6 do
-			obj.canvas[51 + i + (month_index - 1) * 58] = {
+			obj.canvas[51 + i + (month_index - 1) * MONTH_BLOCK] = {
 				type = "text",
 				text = "",
 				textFont = "Courier",
@@ -240,7 +255,30 @@ function obj:init()
 		end
 
 		-- today cover rectangle
-		obj.canvas[58 * month_index] = {
+		-- Create holiday abbreviation labels (overlaid at top-left of each date cell)
+		-- NOTE: must be created BEFORE today-cover to maintain sequential index order
+		for row = 1, 6 do
+			for col = 1, 7 do
+				-- label index = 58 + 7*(row-1) + (col-1) + (month_index-1)*MONTH_BLOCK
+				--              = 57 + 7*(row-1) + col + (month_index-1)*MONTH_BLOCK
+				obj.canvas[57 + 7 * (row - 1) + col + (month_index - 1) * MONTH_BLOCK] = {
+					type = "text",
+					text = "",
+					textFont = "Courier",
+					textSize = LABEL_FONT_SIZE,
+					textColor = holiday_color,
+					textAlignment = "right",
+					frame = {
+						x = tostring((10 + obj.cellw * col) / obj.calw),
+						y = tostring((10 + obj.cellh * (row + 1) + 1 + offset * (month_index - 1)) / obj.calh),
+						w = tostring(obj.cellw / obj.calw),
+						h = tostring(obj.cellh / 2 / obj.calh),
+					},
+				}
+			end
+		end
+
+		obj.canvas[MONTH_BLOCK * month_index] = {
 			type = "rectangle",
 			action = "fill",
 			fillColor = caltodaycolor,
