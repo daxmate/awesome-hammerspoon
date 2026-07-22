@@ -125,20 +125,27 @@ local function updateCalCanvas()
 			end
 		end
 		-- update yearweek
-		local yearweek_of_firstday = 0
-		if month_diff < 0 then
-			yearweek_of_firstday = hs.execute("date -v1d -v" .. tostring(month_diff) .. "m +'%V'")
-		elseif month_diff > 0 then
-			yearweek_of_firstday = hs.execute("date -v1d -v+" .. tostring(month_diff) .. "m +'%V'")
-		else
-			yearweek_of_firstday = hs.execute("date -v1d   +'%V'")
-		end
+		-- For each grid row, compute the week number (%W) of the Monday (column 2 = 一).
+		-- %W = Monday-based, first Monday of January = W01 (same as Apple Calendar in zh_CN).
 		for i = 1, 6 do
-			local yearweek_rowvalue = math.tointeger(yearweek_of_firstday) + i - 1
-			obj.canvas[51 + i + (month_index - 1) * MONTH_BLOCK].text = yearweek_rowvalue
-			if i > needed_rownum then
-				obj.canvas[51 + i + (month_index - 1) * MONTH_BLOCK].text = ""
+			local yearweek_rowvalue
+			if i <= needed_rownum then
+				-- Grid columns: 1=日(Sun), 2=一(Mon), ..., 7=六(Sat)
+				-- Day number at (row_i, col_2): 7*(i-1) + 2 - weekday_of_firstday + 1
+				local monday_day = 7 * (i - 1) + 2 - weekday_of_firstday + 1
+				local ref_day
+				if monday_day >= 1 and monday_day <= maxday_of_month then
+					ref_day = monday_day
+				else
+					-- Row has no Monday (e.g. row starts Tue-Sat); use its first day instead
+					ref_day = 7 * (i - 1) - weekday_of_firstday + 2
+					if ref_day < 1 then ref_day = 1 end
+				end
+				local date_str = string.format("%d-%02d-%02d", year, month, ref_day)
+				local week_str = hs.execute("date -j -f '%Y-%m-%d' '" .. date_str .. "' +'%W'")
+				yearweek_rowvalue = math.tointeger(week_str)
 			end
+			obj.canvas[51 + i + (month_index - 1) * MONTH_BLOCK].text = yearweek_rowvalue or ""
 		end
 		-- trim the canvas
 		obj.canvas:size({
