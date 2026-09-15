@@ -22,6 +22,7 @@ local calcolor              = { red = 235/255, blue = 235/255, green = 235/255 }
 local weekend_color         = { hex = "#FF7878" }
 local holiday_color         = { hex = "#FFB800" }   -- bright amber/gold, distinct from weekend pink-red
 local japan_holiday_color   = { hex = "#4FC3F7" }   -- sky blue, distinct from both
+local workday_color         = { hex = "#9AA7B8" }   -- slate blue-grey: 调休补班 (weekend that is a workday)
 
 -- Per-month canvas element block size (58 + 42 holiday labels)
 local MONTH_BLOCK = 100
@@ -91,8 +92,9 @@ local function updateCalCanvas()
 				else
 					obj.canvas[9 + caltable_idx].text = day_number
 					-- Apply holiday / weekend coloring
-					-- Priority: Chinese holiday > Japanese holiday > weekend > normal
+					-- Priority: Chinese holiday > 调休补班 > Japanese holiday > weekend > normal
 					local isHol, holData = holidays:isHoliday(year, month, day_number)
+					local isWork, workData = holidays:isWorkday(year, month, day_number)
 					local isJpHol, jpHolData = holidays:isJapaneseHoliday(year, month, day_number)
 					-- Update abbreviation label (starts at index 58 within each month block)
 					local label_idx = 9 + caltable_idx + 48  -- 58 - (9+42_first_cell) offset
@@ -101,6 +103,11 @@ local function updateCalCanvas()
 						obj.canvas[9 + caltable_idx].textColor = holiday_color
 						obj.canvas[label_idx].text = holData.abbr or ""
 						obj.canvas[label_idx].textColor = holiday_color
+					elseif isWork then
+						-- 调休补班：数字用正常工作日的颜色，角标"班"提示这天要上班
+						obj.canvas[9 + caltable_idx].textColor = calcolor
+						obj.canvas[label_idx].text = workData.abbr or "班"
+						obj.canvas[label_idx].textColor = workday_color
 					elseif isJpHol then
 						obj.canvas[9 + caltable_idx].textColor = japan_holiday_color
 						obj.canvas[label_idx].text = jpHolData.abbr or ""

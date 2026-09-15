@@ -1,7 +1,7 @@
 --- === Holidays ===
 ---
 --- Chinese holiday data module for DaxCalendar
---- Fetches from holiday.ailcc.com API, falls back to embedded data
+--- Fetches from timor.tech API (放假 + 调休补班 in one payload), falls back to embedded data
 
 local obj = {}
 obj.__index = obj
@@ -23,7 +23,21 @@ local HOLIDAY_ABBR = {
     ["国庆节"]  = "国",
     ["国庆"]    = "国",
     ["除夕"]    = "除",
+    -- 春节假期内的初一~初七统一显示为"春"，7pt 小标签更容易认
+    ["初一"]    = "春",
+    ["初二"]    = "春",
+    ["初三"]    = "春",
+    ["初四"]    = "春",
+    ["初五"]    = "春",
+    ["初六"]    = "春",
+    ["初七"]    = "春",
 }
+
+-- 调休补班 label (weekend that is actually a workday)
+local WORKDAY_ABBR = "班"
+
+-- timor.tech rejects requests without a browser-ish User-Agent
+local API_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36"
 
 -- ============================================================
 -- Japanese holiday abbreviation mapping
@@ -124,6 +138,28 @@ local EMBEDDED = {
 }
 
 -- ============================================================
+-- Embedded 调休补班 data (fallback when the API is unreachable)
+-- Source: 国务院办公厅放假安排
+-- ============================================================
+local WORKDAY_EMBEDDED = {
+    ["2025"] = {
+        ["01-26"] = { name = "春节前补班",   abbr = "班", target = "春节" },
+        ["02-08"] = { name = "春节后补班",   abbr = "班", target = "春节" },
+        ["04-27"] = { name = "劳动节前补班", abbr = "班", target = "劳动节" },
+        ["09-28"] = { name = "国庆节前补班", abbr = "班", target = "国庆节" },
+        ["10-11"] = { name = "国庆节后补班", abbr = "班", target = "国庆节" },
+    },
+    ["2026"] = {
+        ["01-04"] = { name = "元旦后补班",   abbr = "班", target = "元旦" },
+        ["02-14"] = { name = "春节前补班",   abbr = "班", target = "春节" },
+        ["02-28"] = { name = "春节后补班",   abbr = "班", target = "春节" },
+        ["05-09"] = { name = "劳动节后补班", abbr = "班", target = "劳动节" },
+        ["09-20"] = { name = "中秋节前补班", abbr = "班", target = "中秋节" },
+        ["10-10"] = { name = "国庆节后补班", abbr = "班", target = "国庆节" },
+    },
+}
+
+-- ============================================================
 -- Embedded Japanese holiday data (fallback)
 -- ============================================================
 local JP_EMBEDDED = {
@@ -192,8 +228,9 @@ local JP_EMBEDDED = {
 -- ============================================================
 -- Internal state
 -- ============================================================
-local data  = {}
+local data  = {}      -- data[year]["MM-DD"]     = { name, abbr }  放假
 local cache = {}
+local workdays = {}   -- workdays[year]["MM-DD"] = { name, abbr, target }  调休补班
 local jp_data  = {}
 local jp_cache = {}
 
@@ -232,11 +269,31 @@ end
 -- Save / Load local cache
 -- ============================================================
 
+--- Merge { year = { "MM-DD" = entry } } into a store, keeping existing entries
+local function mergeYears(target, source)
+    for yr, days in pairs(source or {}) do
+        target[yr] = target[yr] or {}
+        for k, v in pairs(days) do
+            target[yr][k] = v
+        end
+    end
+end
+
+--- Replace whole years in a store; empty payloads are ignored so
+--- embedded fallback data survives an API year with no entries
+local function replaceYears(target, source)
+    for yr, days in pairs(source or {}) do
+        if next(days) ~= nil then
+            target[yr] = days
+        end
+    end
+end
+
 local function saveCache()
-    local path = cachePath()
-    local ok, err = hs.json.encode(data)
+    local payload = { holidays = data, workdays = workdays }
+    local ok = hs.json.encode(payload)
     if ok then
-        local f = io.open(path, "w")
+        local f = io.open(cachePath(), "w")
         if f then
             f:write(ok)
             f:close()
@@ -245,20 +302,20 @@ local function saveCache()
 end
 
 local function loadCache()
-    local path = cachePath()
-    local f = io.open(path, "r")
-    if f then
-        local raw = f:read("*a")
-        f:close()
-        local ok, decoded = pcall(hs.json.decode, raw)
-        if ok and decoded then
-            for yr, days in pairs(decoded) do
-                data[yr] = days
-            end
-            return true
-        end
+    local f = io.open(cachePath(), "r")
+    if not f then return false end
+    local raw = f:read("*a")
+    f:close()
+    local ok, decoded = pcall(hs.json.decode, raw)
+    if not ok or type(decoded) ~= "table" then return false end
+    if decoded.holidays or decoded.workdays then
+        replaceYears(data, decoded.holidays)
+        replaceYears(workdays, decoded.workdays)
+    else
+        -- legacy format: bare { year = { "MM-DD" = ... } } holiday map
+        replaceYears(data, decoded)
     end
-    return false
+    return true
 end
 
 -- ============================================================
@@ -301,22 +358,13 @@ end
 --- Holidays:load()
 --- Load embedded data + cached data
 function obj:load()
-    -- Load embedded Chinese holidays
-    for yr, days in pairs(EMBEDDED) do
-        data[yr] = data[yr] or {}
-        for k, v in pairs(days) do
-            data[yr][k] = v
-        end
-    end
-    -- Load cached Chinese holidays (may override embedded with API-fresh data)
+    -- Load embedded Chinese holidays + 调休补班 workdays
+    mergeYears(data, EMBEDDED)
+    mergeYears(workdays, WORKDAY_EMBEDDED)
+    -- Load cached data (may override embedded with API-fresh data)
     loadCache()
     -- Load embedded Japanese holidays
-    for yr, days in pairs(JP_EMBEDDED) do
-        jp_data[yr] = jp_data[yr] or {}
-        for k, v in pairs(days) do
-            jp_data[yr][k] = v
-        end
-    end
+    mergeYears(jp_data, JP_EMBEDDED)
     -- Load cached Japanese holidays
     loadJpCache()
     return self
@@ -326,27 +374,36 @@ end
 --- Fetch holiday data from remote API
 function obj:fetchYear(year, callback)
     local yr = yearKey(year)
-    local url = "https://holiday.ailcc.com/api/holiday/year/" .. yr
+    -- timor.tech returns both 放假 (holiday=true) and 调休补班 (holiday=false)
+    local url = "https://timor.tech/api/holiday/year/" .. yr
 
-    hs.http.get(url, nil, function(code, body)
+    hs.http.get(url, { ["User-Agent"] = API_UA }, function(code, body)
         if code == 200 then
             local ok, result = pcall(hs.json.decode, body)
             if ok and result and result.code == 0 and result.holiday then
-                data[yr] = data[yr] or {}
+                local hd, wd = {}, {}
                 for dateKeyRaw, info in pairs(result.holiday) do
                     if info.holiday then
-                        data[yr][dateKeyRaw] = {
+                        hd[dateKeyRaw] = {
                             name = parseName(info.name),
                             abbr = abbrFor(info.name),
                         }
+                    else
+                        wd[dateKeyRaw] = {
+                            name = parseName(info.name),
+                            abbr = WORKDAY_ABBR,
+                            target = info.target,
+                        }
                     end
                 end
+                replaceYears(data, { [yr] = hd })
+                replaceYears(workdays, { [yr] = wd })
                 saveCache()
                 if callback then callback(true) end
                 return
             end
         end
-        hs.printf("[DaxCalendar] Failed to fetch holidays for " .. yr)
+        hs.printf("[DaxCalendar] Failed to fetch holidays for " .. yr .. " (http=" .. tostring(code) .. ")")
         if callback then callback(false) end
     end)
 end
@@ -427,10 +484,29 @@ function obj:monthHolidays(year, month)
     return result
 end
 
+--- Holidays:isWorkday(year, month, day)
+--- 调休补班日（本该休息的周末被调整为工作日）
+--- Returns (true, {name, abbr="班", target}) or (false, nil)
+function obj:isWorkday(year, month, day)
+    local yr = yearKey(year)
+    local key = dateKey(year, month, day)
+    local yd = workdays[yr]
+    if yd and yd[key] then
+        return true, yd[key]
+    end
+    return false, nil
+end
+
 --- Holidays:holidayColor()
 --- Returns color table for holiday text
 function obj:holidayColor()
     return { hex = "#FFB800" }  -- bright amber/gold
+end
+
+--- Holidays:workdayColor()
+--- Returns color table for 调休补班 labels
+function obj:workdayColor()
+    return { hex = "#9AA7B8" }  -- slate blue-grey
 end
 
 return obj
