@@ -32,6 +32,10 @@ local BADGE_MARGIN_Y = 5.0   -- centre distance from the cell's top edge
 local LABEL_BOX_W    = 16
 local LABEL_BOX_H    = 12
 local DAY_NUMBER_SHIFT = 3.0 -- badge cells: nudge the day number left so the badge never clips it
+-- hs.canvas draws text DOWN FROM THE FRAME'S TOP (not vertically centred), so a
+-- label box centred on the badge renders ~1.5pt too high. Measured from a real
+-- screenshot (30 badges): ink centre sat 3.77pt below the frame top for 7pt text.
+local LABEL_Y_ADJUST  = 2.0
 
 -- Per-month canvas element block layout (index bases inside one month block):
 --   1                         : background rectangle
@@ -341,7 +345,7 @@ function obj:init()
 					textAlignment = "center",
 					frame = {
 						x = frac(center.x - LABEL_BOX_W / 2, obj.calw),
-						y = frac(center.y - LABEL_BOX_H / 2, obj.calh),
+						y = frac(center.y - LABEL_BOX_H / 2 + LABEL_Y_ADJUST, obj.calh),
 						w = frac(LABEL_BOX_W, obj.calw),
 						h = frac(LABEL_BOX_H, obj.calh),
 					},
