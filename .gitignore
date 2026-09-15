@@ -47,3 +47,5 @@ private
 
 # DaxCalendar cache
 Spoons/DaxCalendar.spoon/holiday_cache.json
+Spoons/DaxCalendar.spoon/holiday_jp_cache.json
+Spoons/DaxCalendar.spoon/fetch.log

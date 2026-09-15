@@ -215,6 +215,51 @@ local function cachePath()
     return hs.configdir .. "/Spoons/DaxCalendar.spoon/holiday_cache.json"
 end
 
+local function tblCount(t)
+    local n = 0
+    for _ in pairs(t or {}) do n = n + 1 end
+    return n
+end
+
+--- Report to the console AND to fetch.log, so a silent network failure is still
+--- visible later (the console buffer is easy to miss / can be scrolled away).
+local function logLine(msg)
+    local f = io.open(hs.configdir .. "/Spoons/DaxCalendar.spoon/fetch.log", "a")
+    if f then
+        f:write(os.date("%Y-%m-%d %H:%M:%S") .. "  " .. msg .. "\n")
+        f:close()
+    end
+    hs.printf("[DaxCalendar] " .. msg)
+end
+
+--- GET a URL as text. hs.http gets first crack. If it never calls back at all
+--- (observed on this machine: no error, no callback, no cache) fall back to the
+--- system curl through hs.task, which is known to reach these APIs here.
+local function httpGetText(url, callback)
+    local answered = false
+    local watchdog = hs.timer.doAfter(12, function()
+        if answered then return end
+        answered = true
+        logLine("hs.http gave no answer for " .. url .. " within 12s -> trying curl")
+        local task = hs.task.new("/usr/bin/curl", function(exitCode, stdout, stderr)
+            local body = stdout or ""
+            if exitCode == 0 and body ~= "" then
+                callback(200, body)
+            else
+                logLine("curl fallback failed (exit=" .. tostring(exitCode) .. "): " .. tostring(stderr))
+                callback(0, "")
+            end
+        end, { "-s", "--max-time", "20", "-A", API_UA, url })
+        task:start()
+    end)
+    hs.http.get(url, { ["User-Agent"] = API_UA }, function(code, body)
+        if answered then return end
+        answered = true
+        watchdog:stop()
+        callback(code, body)
+    end)
+end
+
 -- ============================================================
 -- Save / Load local cache
 -- ============================================================
@@ -241,14 +286,20 @@ end
 
 local function saveCache()
     local payload = { holidays = data, workdays = workdays }
-    local ok = hs.json.encode(payload)
-    if ok then
-        local f = io.open(cachePath(), "w")
-        if f then
-            f:write(ok)
-            f:close()
-        end
+    local jsonStr, err = hs.json.encode(payload)
+    if not jsonStr then
+        logLine("cache NOT written: hs.json.encode failed (" .. tostring(err) .. ")")
+        return
     end
+    local path = cachePath()
+    local f, ferr = io.open(path, "w")
+    if not f then
+        logLine("cache NOT written: cannot open " .. path .. " (" .. tostring(ferr) .. ")")
+        return
+    end
+    f:write(jsonStr)
+    f:close()
+    logLine("cache written: " .. path .. " (" .. tostring(#jsonStr) .. " bytes)")
 end
 
 local function loadCache()
@@ -327,33 +378,37 @@ function obj:fetchYear(year, callback)
     -- timor.tech returns both 放假 (holiday=true) and 调休补班 (holiday=false)
     local url = "https://timor.tech/api/holiday/year/" .. yr
 
-    hs.http.get(url, { ["User-Agent"] = API_UA }, function(code, body)
+    httpGetText(url, function(code, body)
+        local ok, result = false, nil
         if code == 200 then
-            local ok, result = pcall(hs.json.decode, body)
-            if ok and result and result.code == 0 and result.holiday then
-                local hd, wd = {}, {}
-                for dateKeyRaw, info in pairs(result.holiday) do
-                    if info.holiday then
-                        hd[dateKeyRaw] = {
-                            name = parseName(info.name),
-                            abbr = HOLIDAY_ABBR,
-                        }
-                    else
-                        wd[dateKeyRaw] = {
-                            name = parseName(info.name),
-                            abbr = WORKDAY_ABBR,
-                            target = info.target,
-                        }
-                    end
-                end
-                replaceYears(data, { [yr] = hd })
-                replaceYears(workdays, { [yr] = wd })
-                saveCache()
-                if callback then callback(true) end
-                return
-            end
+            ok, result = pcall(hs.json.decode, body)
         end
-        hs.printf("[DaxCalendar] Failed to fetch holidays for " .. yr .. " (http=" .. tostring(code) .. ")")
+        if ok and result and result.code == 0 and result.holiday then
+            local hd, wd = {}, {}
+            for dateKeyRaw, info in pairs(result.holiday) do
+                if info.holiday then
+                    hd[dateKeyRaw] = {
+                        name = parseName(info.name),
+                        abbr = HOLIDAY_ABBR,
+                    }
+                else
+                    wd[dateKeyRaw] = {
+                        name = parseName(info.name),
+                        abbr = WORKDAY_ABBR,
+                        target = info.target,
+                    }
+                end
+            end
+            replaceYears(data, { [yr] = hd })
+            replaceYears(workdays, { [yr] = wd })
+            saveCache()
+            logLine("fetched " .. yr .. ": " .. tostring(tblCount(hd)) .. " holidays, "
+                .. tostring(tblCount(wd)) .. " workdays")
+            if callback then callback(true) end
+            return
+        end
+        logLine("fetch FAILED for " .. yr .. " (http=" .. tostring(code)
+            .. ", bytes=" .. tostring(#(body or "")) .. ")")
         if callback then callback(false) end
     end)
 end
@@ -364,7 +419,7 @@ function obj:fetchJapaneseYear(year, callback)
     local yr = tostring(year)
     local url = "https://holidays-jp.github.io/api/v1/" .. yr .. "/date.json"
 
-    hs.http.get(url, nil, function(code, body)
+    httpGetText(url, function(code, body)
         if code == 200 then
             local ok, result = pcall(hs.json.decode, body)
             if ok and result then
@@ -377,11 +432,12 @@ function obj:fetchJapaneseYear(year, callback)
                     jp_data[yr][md] = { name = baseName, abbr = abbr }
                 end
                 saveJpCache()
+                logLine("fetched JP " .. yr .. ": " .. tostring(tblCount(jp_data[yr])) .. " holidays")
                 if callback then callback(true) end
                 return
             end
         end
-        hs.printf("[DaxCalendar] Failed to fetch Japanese holidays for " .. yr)
+        logLine("JP fetch FAILED for " .. yr .. " (http=" .. tostring(code) .. ")")
         if callback then callback(false) end
     end)
 end
