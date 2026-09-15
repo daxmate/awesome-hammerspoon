@@ -677,10 +677,15 @@ local function buildYearCanvas()
 	for month = 1, 12 do
 		local col = (month - 1) % YEAR_COLS
 		local row = math.floor((month - 1) / YEAR_COLS)
-		-- one rounded panel per block: the 12 blocks tile the canvas exactly, so
-		-- the whole year panel stays dark like the 3-month view's
-		drawMonthBlock(canvas, (month - 1) * MONTH_BLOCK, col * BLOCK_W, row * BLOCK_H, year, month, layout,
-			{ color = calbgcolor, framed = true })
+		-- Only the first block carries the panel. It has no frame, so it covers
+		-- the whole canvas and gives the year grid its rounded OUTER corners;
+		-- every other block gets a transparent frame-less panel, so no rounded
+		-- corners appear between the months (and nothing double-darkens).
+		local panel = {
+			color = month == 1 and calbgcolor or cal_transparent_bg,
+			framed = false,
+		}
+		drawMonthBlock(canvas, (month - 1) * MONTH_BLOCK, col * BLOCK_W, row * BLOCK_H, year, month, layout, panel)
 	end
 
 	local legend_end = drawLegend(canvas, MONTH_BLOCK * 12, YEAR_TOTAL_H - LEGEND_H / 2, YEAR_TOTAL_H, YEAR_W)
