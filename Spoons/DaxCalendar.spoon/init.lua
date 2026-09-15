@@ -84,25 +84,22 @@ local weeknumcolor       = { red = 246 / 255, blue = 246 / 255, green = 246 / 25
 local VIEW_3MONTH = "3month"
 local VIEW_YEAR   = "year"
 
--- ---- year view geometry: 12 mini months in 3 columns x 4 rows -------------
--- A mini month is one small title line plus up to 6 rows of day numbers.
--- No 休/班 badges, no week-number column and no weekday header row: there is
--- no room for them at this scale.
-local YEAR_COLS        = 3
-local YEAR_ROWS        = 4
-local MINI_W           = (obj.calw - 20) / YEAR_COLS    -- ~80pt
+-- ---- year view geometry: 12 mini months in 4 columns x 3 rows -------------
+-- The year canvas is twice as wide as the 3-month one and exactly as tall (both
+-- heights come from canvasHeightForRows()), so 4 x 3 is the shape that fits.
+-- A mini month is one title line plus up to 6 rows of day numbers. Still no
+-- 休/班 badges, no week-number column and no weekday header row.
+local YEAR_COLS        = 4
+local YEAR_ROWS        = 3
+local YEAR_W           = 2 * obj.calw                   -- 520pt
+local MINI_W           = (YEAR_W - 20) / YEAR_COLS      -- ~125pt
 local MINI_TITLE_H     = 12
-local MINI_CELL_H      = 11
-local MINI_CELL_W      = MINI_W / 7                     -- ~11.4pt
-local MINI_BODY_H      = 6 * MINI_CELL_H
-local MINI_H           = MINI_TITLE_H + MINI_BODY_H     -- ~78pt
+local MINI_CELL_W      = MINI_W / 7                     -- ~17.9pt (12pt digits fit)
 -- Top strip: room for the clickable view toggle in the canvas' top-right corner
 local YEAR_TOP         = 22
 local YEAR_ROW_GAP     = 6
-local YEAR_GRID_BOTTOM = YEAR_TOP + YEAR_ROWS * MINI_H + (YEAR_ROWS - 1) * YEAR_ROW_GAP
-local YEAR_TOTAL_H     = YEAR_GRID_BOTTOM + LEGEND_H    -- grid + legend strip
-local MINI_TITLE_SIZE  = 8
-local MINI_DAY_SIZE    = 8
+local MINI_TITLE_SIZE  = 11
+local MINI_DAY_SIZE    = 12
 -- Per-mini-month element block (index base inside the block):
 --   1        : title line
 --   2 .. 43  : day numbers (6 rows x 7 cols)
@@ -140,6 +137,60 @@ local function sunday_first_weekday(date)
 	end
 end
 
+--- Canvas height when the grid needs `needed_rownum` rows: the grid keeps its
+--- usual proportions and the legend strip goes in the extra space. Shared by
+--- both views, so the year canvas ends up exactly as tall as the 3-month one.
+local function canvasHeightForRows(needed_rownum)
+	local content_h = 20 + (obj.calh - 20) / 8 * (needed_rownum + 2)
+	return content_h / obj.calh * TOTAL_H
+end
+
+--- Year/month of 3-month window slot `month_index` (1..obj.months).
+local function windowMonth(month_index)
+	local current_date = os.date("*t")
+	local month = current_date.month + month_index - obj.months // 2 - 1
+	local year = month < 1 and current_date.year - 1 or month > 12 and current_date.year + 1 or current_date.year
+	month = (month + 12) % 12
+	if month == 0 then
+		month = 12
+	end
+	return year, month
+end
+
+--- Grid rows needed by a window slot. updateCalCanvas sizes the 3-month canvas
+--- from the LAST slot's row count, so the year view asks for the same slot to
+--- end up exactly as tall.
+local function windowRowsNeeded(month_index)
+	local year, month = windowMonth(month_index)
+	local next_month = (month + 1) % 12
+	local firstday_of_next_month = os.time({ year = year, month = next_month, day = 1 })
+	local maxday_of_month = os.date("*t", firstday_of_next_month - 24 * 60 * 60).day
+	local weekday_of_firstday = os.date("*t", os.time({ year = year, month = month, day = 1 })).wday
+	return math.ceil((weekday_of_firstday + maxday_of_month - 1) / 7)
+end
+
+--- Year-view metrics. The canvas height tracks the 3-month view, so the mini
+--- month height (and with it the day-cell height) is recomputed on every build.
+local year_metrics = nil
+local function computeYearMetrics()
+	local total_h = canvasHeightForRows(windowRowsNeeded(obj.months))
+	local grid_h = total_h - YEAR_TOP - LEGEND_H
+	local mini_h = (grid_h - (YEAR_ROWS - 1) * YEAR_ROW_GAP) / YEAR_ROWS
+	return {
+		total_h = total_h,
+		mini_h = mini_h,
+		cell_h = (mini_h - MINI_TITLE_H) / 6,
+		grid_bottom = total_h - LEGEND_H,
+	}
+end
+
+--- Top-left corner of mini month `month` inside the year canvas.
+local function miniMonthOrigin(month)
+	local mini_col = (month - 1) % YEAR_COLS
+	local mini_row = math.floor((month - 1) / YEAR_COLS)
+	return 10 + mini_col * MINI_W, YEAR_TOP + mini_row * (year_metrics.mini_h + YEAR_ROW_GAP)
+end
+
 --- Canvas-point centre of a cell's badge circle
 local function cellBadgeCenter(col, row, month_index)
 	local offset = obj.calh / obj.months
@@ -163,8 +214,9 @@ end
 --- Append the legend strip to `canvas` starting after index `start_idx`.
 --- `legend_y` is the strip's centre in canvas points and `total_h` the
 --- denominator the y fractions resolve against (calh + LEGEND_H for the
---- 3-month view, YEAR_TOTAL_H for the year view). Returns the last index used.
-local function drawLegend(canvas, start_idx, legend_y, total_h)
+--- 3-month view, year_metrics.total_h for the year view). Returns the last index used.
+local function drawLegend(canvas, start_idx, legend_y, total_h, layout_w)
+	layout_w = layout_w or obj.calw
 	local items = {}
 	local legend_w = LEGEND_GAP * (#LEGEND_ITEMS - 1)
 	for i = 1, #LEGEND_ITEMS do
@@ -175,7 +227,7 @@ local function drawLegend(canvas, start_idx, legend_y, total_h)
 		legend_w = legend_w + item.w
 		items[i] = item
 	end
-	local legend_x = (obj.calw - legend_w) / 2
+	local legend_x = (layout_w - legend_w) / 2
 	local legend_idx = start_idx
 	for _, item in ipairs(items) do
 		item.disc_cx = legend_x + LEGEND_RADIUS
@@ -185,7 +237,7 @@ local function drawLegend(canvas, start_idx, legend_y, total_h)
 			type = "circle",
 			action = "fill",
 			radius = LEGEND_RADIUS,
-			center = { x = frac(item.disc_cx, obj.calw), y = frac(legend_y, total_h) },
+			center = { x = frac(item.disc_cx, layout_w), y = frac(legend_y, total_h) },
 			fillColor = item.color,
 		}
 		if item.glyph then
@@ -198,9 +250,9 @@ local function drawLegend(canvas, start_idx, legend_y, total_h)
 				textColor = badge_text_color,
 				textAlignment = "center",
 				frame = {
-					x = frac(item.disc_cx - LABEL_BOX_W / 2, obj.calw),
+					x = frac(item.disc_cx - LABEL_BOX_W / 2, layout_w),
 					y = frac(legend_y - LABEL_BOX_H / 2 + LABEL_Y_ADJUST, total_h),
-					w = frac(LABEL_BOX_W, obj.calw),
+					w = frac(LABEL_BOX_W, layout_w),
 					h = frac(LABEL_BOX_H, total_h),
 				},
 			}
@@ -217,9 +269,9 @@ local function drawLegend(canvas, start_idx, legend_y, total_h)
 			textColor = calcolor,
 			textAlignment = "left",
 			frame = {
-				x = frac(item.text_x, obj.calw),
+				x = frac(item.text_x, layout_w),
 				y = frac(legend_y - LEGEND_LABEL_BOX_H / 2 + LEGEND_LABEL_Y_ADJUST, total_h),
-				w = frac(item.text_w + 6, obj.calw),
+				w = frac(item.text_w + 6, layout_w),
 				h = frac(LEGEND_LABEL_BOX_H, total_h),
 			},
 		}
@@ -229,7 +281,8 @@ end
 
 --- Append the clickable view-toggle label (canvas' top-right corner). It is
 --- the LAST element of both views, so the canvas indices stay contiguous.
-local function drawViewToggle(canvas, index, total_h, mode)
+local function drawViewToggle(canvas, index, total_h, mode, layout_w)
+	layout_w = layout_w or obj.calw
 	local i = index + 1
 	canvas[i] = {
 		id = TOGGLE_ID,
@@ -241,9 +294,9 @@ local function drawViewToggle(canvas, index, total_h, mode)
 		textAlignment = "right",
 		trackMouseDown = true,   -- frame == hit area for text elements
 		frame = {
-			x = frac(obj.calw - TOGGLE_MARGIN - TOGGLE_W, obj.calw),
+			x = frac(layout_w - TOGGLE_MARGIN - TOGGLE_W, layout_w),
 			y = frac(TOGGLE_TOP, total_h),
-			w = frac(TOGGLE_W, obj.calw),
+			w = frac(TOGGLE_W, layout_w),
 			h = frac(TOGGLE_H, total_h),
 		},
 	}
@@ -371,10 +424,9 @@ local function updateCalCanvas()
 			obj.canvas[51 + i + (month_index - 1) * MONTH_BLOCK].text = yearweek_rowvalue or ""
 		end
 		-- trim the canvas: the grid plus the legend strip below it
-		local content_h = 20 + (obj.calh - 20) / 8 * (needed_rownum + 2)
 		obj.canvas:size({
 			w = obj.calw,
-			h = content_h / obj.calh * TOTAL_H,
+			h = canvasHeightForRows(needed_rownum),
 		})
 	end
 end
@@ -382,14 +434,14 @@ end
 --- Create the canvas window sized to `height` points, showing on all spaces at
 --- the desktop-icon level. A fresh canvas is created per rebuild because
 --- hs.canvas elements can only be appended contiguously.
-local function createCanvas(height)
+local function createCanvas(width, height)
 	local cscreen = hs.screen.mainScreen()
 	local cres = cscreen:fullFrame()
 	local canvas = hs.canvas
 		.new({
 			x = 20,
 			y = cres.h - height - 20,
-			w = obj.calw,
+			w = width,
 			h = height,
 		})
 		:show()
@@ -412,7 +464,7 @@ end
 local function buildThreeMonthCanvas()
 	local offset = obj.calh / obj.months
 
-	obj.canvas = createCanvas(obj.calh)
+	obj.canvas = createCanvas(obj.calw, obj.calh)
 
 	for month_index = 1, obj.months do
 		obj.canvas[1 + (month_index - 1) * MONTH_BLOCK] = {
@@ -550,22 +602,21 @@ local function buildThreeMonthCanvas()
 	end
 
 	-- Legend strip, exactly as before (first grid index is the block count)
-	local legend_end = drawLegend(obj.canvas, MONTH_BLOCK * obj.months, obj.calh + LEGEND_H / 2, TOTAL_H)
+	local legend_end = drawLegend(obj.canvas, MONTH_BLOCK * obj.months, obj.calh + LEGEND_H / 2, TOTAL_H, obj.calw)
 	-- clickable view toggle, appended last
-	drawViewToggle(obj.canvas, legend_end, TOTAL_H, VIEW_3MONTH)
+	drawViewToggle(obj.canvas, legend_end, TOTAL_H, VIEW_3MONTH, obj.calw)
 end
 
---- Build the year view: 12 mini months in 3 columns x 4 rows, then the legend.
+--- Build the year view: 12 mini months in 4 columns x 3 rows, then the legend.
 --- Like the 3-month view every index is created in order (no gaps).
 local function buildYearCanvas()
-	obj.canvas = createCanvas(YEAR_TOTAL_H)
+	year_metrics = computeYearMetrics()
+	local ym = year_metrics
+	obj.canvas = createCanvas(YEAR_W, ym.total_h)
 
 	for month = 1, 12 do
-		local mini_col = (month - 1) % YEAR_COLS
-		local mini_row = math.floor((month - 1) / YEAR_COLS)
-		local origin_x = 10 + mini_col * MINI_W
-		local origin_y = YEAR_TOP + mini_row * (MINI_H + YEAR_ROW_GAP)
 		local base = (month - 1) * MINI_BLOCK
+		local origin_x, origin_y = miniMonthOrigin(month)
 
 		-- 1: mini month title (e.g. "9月")
 		obj.canvas[base + 1] = {
@@ -577,10 +628,10 @@ local function buildYearCanvas()
 			textColor = cal_header_color,
 			textAlignment = "center",
 			frame = {
-				x = frac(origin_x, obj.calw),
-				y = frac(origin_y, YEAR_TOTAL_H),
-				w = frac(MINI_W, obj.calw),
-				h = frac(MINI_TITLE_H, YEAR_TOTAL_H),
+				x = frac(origin_x, YEAR_W),
+				y = frac(origin_y, ym.total_h),
+				w = frac(MINI_W, YEAR_W),
+				h = frac(MINI_TITLE_H, ym.total_h),
 			},
 		}
 
@@ -595,10 +646,10 @@ local function buildYearCanvas()
 					textColor = (col_i == 1 or col_i == 7) and weekend_color or calcolor,
 					textAlignment = "center",
 					frame = {
-						x = frac(origin_x + (col_i - 1) * MINI_CELL_W, obj.calw),
-						y = frac(origin_y + MINI_TITLE_H + (row_i - 1) * MINI_CELL_H, YEAR_TOTAL_H),
-						w = frac(MINI_CELL_W, obj.calw),
-						h = frac(MINI_CELL_H, YEAR_TOTAL_H),
+						x = frac(origin_x + (col_i - 1) * MINI_CELL_W, YEAR_W),
+						y = frac(origin_y + MINI_TITLE_H + (row_i - 1) * ym.cell_h, ym.total_h),
+						w = frac(MINI_CELL_W, YEAR_W),
+						h = frac(ym.cell_h, ym.total_h),
 					},
 				}
 			end
@@ -609,23 +660,24 @@ local function buildYearCanvas()
 			type = "rectangle",
 			action = "fill",
 			fillColor = cal_transparent_bg,
-			roundedRectRadii = { xRadius = 2, yRadius = 2 },
+			roundedRectRadii = { xRadius = 3, yRadius = 3 },
 			frame = {
-				x = frac(origin_x, obj.calw),
-				y = frac(origin_y + MINI_TITLE_H, YEAR_TOTAL_H),
-				w = frac(MINI_CELL_W, obj.calw),
-				h = frac(MINI_CELL_H, YEAR_TOTAL_H),
+				x = frac(origin_x, YEAR_W),
+				y = frac(origin_y + MINI_TITLE_H, ym.total_h),
+				w = frac(MINI_CELL_W, YEAR_W),
+				h = frac(ym.cell_h, ym.total_h),
 			},
 		}
 	end
 
-	local legend_end = drawLegend(obj.canvas, MINI_BLOCK * 12, YEAR_GRID_BOTTOM + LEGEND_H / 2, YEAR_TOTAL_H)
+	local legend_end = drawLegend(obj.canvas, MINI_BLOCK * 12, ym.grid_bottom + LEGEND_H / 2, ym.total_h, YEAR_W)
 	-- clickable view toggle, appended last (same as the 3-month view)
-	drawViewToggle(obj.canvas, legend_end, YEAR_TOTAL_H, VIEW_YEAR)
+	drawViewToggle(obj.canvas, legend_end, ym.total_h, VIEW_YEAR, YEAR_W)
 end
 
 --- Redraw the year view: every month of the current year.
 local function updateYearCanvas()
+	local ym = year_metrics or computeYearMetrics()
 	local current_date = os.date("*t")
 	local year = current_date.year
 	local current_month = current_date.month
@@ -633,10 +685,7 @@ local function updateYearCanvas()
 
 	for month = 1, 12 do
 		local base = (month - 1) * MINI_BLOCK
-		local mini_col = (month - 1) % YEAR_COLS
-		local mini_row = math.floor((month - 1) / YEAR_COLS)
-		local origin_x = 10 + mini_col * MINI_W
-		local origin_y = YEAR_TOP + mini_row * (MINI_H + YEAR_ROW_GAP)
+		local origin_x, origin_y = miniMonthOrigin(month)
 		local weekday_of_firstday = os.date("*t", os.time({ year = year, month = month, day = 1 })).wday
 		-- os.time() normalises month 13 into January of the next year
 		local maxday_of_month = os.date("*t", os.time({ year = year, month = month + 1, day = 1 }) - 24 * 60 * 60).day
@@ -679,14 +728,14 @@ local function updateYearCanvas()
 			local col_i = cell_n % 7 + 1
 			local row_i = math.floor(cell_n / 7) + 1
 			highlight.fillColor = caltodaycolor
-			highlight.frame.x = frac(origin_x + (col_i - 1) * MINI_CELL_W, obj.calw)
-			highlight.frame.y = frac(origin_y + MINI_TITLE_H + (row_i - 1) * MINI_CELL_H, YEAR_TOTAL_H)
+			highlight.frame.x = frac(origin_x + (col_i - 1) * MINI_CELL_W, YEAR_W)
+			highlight.frame.y = frac(origin_y + MINI_TITLE_H + (row_i - 1) * ym.cell_h, ym.total_h)
 		else
 			highlight.fillColor = cal_transparent_bg
 		end
 	end
 
-	obj.canvas:size({ w = obj.calw, h = YEAR_TOTAL_H })
+	obj.canvas:size({ w = YEAR_W, h = ym.total_h })
 end
 
 --- Bind the view-toggle hotkey. `_G.daxcalendar_keys` (e.g. { {"alt"}, "," })
