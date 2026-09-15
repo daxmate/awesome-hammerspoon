@@ -105,6 +105,9 @@ local MINI_DAY_SIZE    = 12
 --   2 .. 43  : day numbers (6 rows x 7 cols)
 --   44       : today highlight (the block's last index)
 local MINI_BLOCK       = 44
+-- element 1 of the year canvas is the shared translucent panel, so every
+-- mini-month block starts one index later
+local MINI_BLOCK_OFFSET = 1
 
 -- View-toggle label: a small clickable text element in the canvas' top-right
 -- corner. `trackMouseDown` makes its frame the hit area (text elements track by
@@ -614,8 +617,18 @@ local function buildYearCanvas()
 	local ym = year_metrics
 	obj.canvas = createCanvas(YEAR_W, ym.total_h)
 
+	-- 1: canvas background -- the same translucent rounded panel the 3-month
+	-- view draws (no frame => it spans the whole canvas)
+	obj.canvas[1] = {
+		id = "cal_bg",
+		type = "rectangle",
+		action = "fill",
+		fillColor = calbgcolor,
+		roundedRectRadii = { xRadius = 10, yRadius = 10 },
+	}
+
 	for month = 1, 12 do
-		local base = (month - 1) * MINI_BLOCK
+		local base = MINI_BLOCK_OFFSET + (month - 1) * MINI_BLOCK
 		local origin_x, origin_y = miniMonthOrigin(month)
 
 		-- 1: mini month title (e.g. "9月")
@@ -670,7 +683,7 @@ local function buildYearCanvas()
 		}
 	end
 
-	local legend_end = drawLegend(obj.canvas, MINI_BLOCK * 12, ym.grid_bottom + LEGEND_H / 2, ym.total_h, YEAR_W)
+	local legend_end = drawLegend(obj.canvas, MINI_BLOCK_OFFSET + MINI_BLOCK * 12, ym.grid_bottom + LEGEND_H / 2, ym.total_h, YEAR_W)
 	-- clickable view toggle, appended last (same as the 3-month view)
 	drawViewToggle(obj.canvas, legend_end, ym.total_h, VIEW_YEAR, YEAR_W)
 end
@@ -684,7 +697,7 @@ local function updateYearCanvas()
 	local current_day = current_date.day
 
 	for month = 1, 12 do
-		local base = (month - 1) * MINI_BLOCK
+		local base = MINI_BLOCK_OFFSET + (month - 1) * MINI_BLOCK
 		local origin_x, origin_y = miniMonthOrigin(month)
 		local weekday_of_firstday = os.date("*t", os.time({ year = year, month = month, day = 1 })).wday
 		-- os.time() normalises month 13 into January of the next year
