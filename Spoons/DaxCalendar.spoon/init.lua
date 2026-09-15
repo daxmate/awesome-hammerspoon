@@ -445,6 +445,15 @@ end
 --- Fill one month block in: title, day numbers with holiday/weekend colours,
 --- 休/班 badges, week numbers and the today highlight. Returns the number of grid
 --- rows the month needs (the 3-month canvas is sized from its last block).
+--- Monday-based week number of a date ("00" for days before the year's first
+--- Monday). Identical to BSD `date +%W` (verified against it for 2024-2028
+--- including year boundaries) but computed in-process -- the previous code
+--- spawned a `date` subprocess for every calendar row (72 of them per year
+--- view render), which caused a visible hitch.
+local function weekNumberOf(year, month, day)
+	return tonumber(os.date("%W", os.time({ year = year, month = month, day = day, hour = 12 })))
+end
+
 local function updateMonthBlock(canvas, base, x_origin, y_origin, layout, year, month)
 	local w, h = layout.w, layout.h
 	local cellw, cellh = obj.cellw, obj.cellh
@@ -535,9 +544,7 @@ local function updateMonthBlock(canvas, base, x_origin, y_origin, layout, year, 
 				ref_day = 7 * (i - 1) - weekday_of_firstday + 2
 				if ref_day < 1 then ref_day = 1 end
 			end
-			local date_str = string.format("%d-%02d-%02d", year, month, ref_day)
-			local week_str = hs.execute("date -j -f '%Y-%m-%d' '" .. date_str .. "' +'%W'")
-			yearweek_rowvalue = math.tointeger(week_str)
+			yearweek_rowvalue = weekNumberOf(year, month, ref_day)
 		end
 		canvas[base + 51 + i].text = yearweek_rowvalue or ""
 	end
