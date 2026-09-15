@@ -224,12 +224,27 @@ end
 --- Report to the console AND to fetch.log, so a silent network failure is still
 --- visible later (the console buffer is easy to miss / can be scrolled away).
 local function logLine(msg)
-    local f = io.open(hs.configdir .. "/Spoons/DaxCalendar.spoon/fetch.log", "a")
+    local line = os.date("%Y-%m-%d %H:%M:%S") .. "  [fetch] " .. msg .. "\n"
+    local spoon_log = hs.configdir .. "/Spoons/DaxCalendar.spoon/fetch.log"
+    local f = io.open(spoon_log, "a")
     if f then
-        f:write(os.date("%Y-%m-%d %H:%M:%S") .. "  " .. msg .. "\n")
+        f:write(line)
         f:close()
+    else
+        line = line:gsub("\n$", "") .. "\n          (NOTE: " .. spoon_log .. " is NOT writable)\n"
+    end
+    -- always mirror next to the init/toggle diagnostics in /tmp, so a missing
+    -- fetch.log can never hide what the fetch layer did
+    local mirror = io.open("/tmp/daxcalendar.log", "a")
+    if mirror then
+        mirror:write(line)
+        mirror:close()
     end
     hs.printf("[DaxCalendar] " .. msg)
+end
+
+local function msSince(t0)
+    return math.floor((hs.timer.secondsSinceEpoch() - t0) * 1000)
 end
 
 --- GET a URL as text. hs.http gets first crack. If it never calls back at all
@@ -240,7 +255,7 @@ local function httpGetText(url, callback)
     local watchdog = hs.timer.doAfter(12, function()
         if answered then return end
         answered = true
-        logLine("hs.http gave no answer for " .. url .. " within 12s -> trying curl")
+        logLine("watchdog fired: hs.http gave no answer for " .. url .. " within 12s -> trying curl")
         local task = hs.task.new("/usr/bin/curl", function(exitCode, stdout, stderr)
             local body = stdout or ""
             if exitCode == 0 and body ~= "" then
@@ -252,12 +267,16 @@ local function httpGetText(url, callback)
         end, { "-s", "--max-time", "20", "-A", API_UA, url })
         task:start()
     end)
+    local t_call = hs.timer.secondsSinceEpoch()
     hs.http.get(url, { ["User-Agent"] = API_UA }, function(code, body)
         if answered then return end
         answered = true
         watchdog:stop()
+        logLine(string.format("hs.http answered %s in %d ms (http=%s, %d bytes)",
+            url:match("([^/]+)$"), msSince(t_call), tostring(code), #(body or "")))
         callback(code, body)
     end)
+    logLine(string.format("hs.http.get(%s) dispatched in %d ms", url:match("([^/]+)$"), msSince(t_call)))
 end
 
 -- ============================================================
@@ -286,6 +305,7 @@ end
 
 local function saveCache()
     local payload = { holidays = data, workdays = workdays }
+    local t0 = hs.timer.secondsSinceEpoch()
     local jsonStr, err = hs.json.encode(payload)
     if not jsonStr then
         logLine("cache NOT written: hs.json.encode failed (" .. tostring(err) .. ")")
@@ -299,7 +319,7 @@ local function saveCache()
     end
     f:write(jsonStr)
     f:close()
-    logLine("cache written: " .. path .. " (" .. tostring(#jsonStr) .. " bytes)")
+    logLine("cache written: " .. path .. " (" .. tostring(#jsonStr) .. " bytes, " .. tostring(msSince(t0)) .. " ms)")
 end
 
 local function loadCache()
