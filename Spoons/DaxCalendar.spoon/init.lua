@@ -39,12 +39,14 @@ local DAY_NUMBER_SHIFT = 3.0 -- badge cells: nudge the day number left so the ba
 --   3 .. 9                    : weekday header
 --   10 .. 51                  : day numbers
 --   52 .. 57                  : week numbers
---   101 .. 142                : holiday / workday badge circles
---   143 .. 184                : holiday / workday labels (休 / 班)
---   MONTH_BLOCK * month_index : today highlight
-local MONTH_BLOCK = 200
-local IDX_BADGE_BASE = 100
-local IDX_LABEL_BASE = 142
+--   58 .. 99                  : holiday / workday badge circles
+--   100 .. 141                : holiday / workday labels (休 / 班)
+--   142                       : today highlight (the block's last index)
+-- NOTE: hs.canvas only accepts contiguous appends (index <= elementCount()+1),
+-- so a block must create every index in order, with no gaps.
+local MONTH_BLOCK = 142
+local IDX_BADGE_BASE = 57
+local IDX_LABEL_BASE = 99
 
 obj.calw = 260
 obj.months = 3
