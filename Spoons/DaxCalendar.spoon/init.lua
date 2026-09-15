@@ -37,6 +37,15 @@ local DAY_NUMBER_SHIFT = 3.0 -- badge cells: nudge the day number left so the ba
 -- screenshot (30 badges): ink centre sat 3.77pt below the frame top for 7pt text.
 local LABEL_Y_ADJUST  = 2.0
 
+-- Legend strip drawn below the grid
+local LEGEND_H              = 26    -- nominal height of the strip
+local LEGEND_RADIUS         = 5.5
+local LEGEND_TEXT_SIZE      = 8
+local LEGEND_GAP            = 12    -- between legend items
+local LEGEND_DISC_GAP       = 4     -- between a disc and its caption
+local LEGEND_LABEL_BOX_H    = 13
+local LEGEND_LABEL_Y_ADJUST = 2.2   -- same top-anchored-text correction as above
+
 -- Per-month canvas element block layout (index bases inside one month block):
 --   1                         : background rectangle
 --   2                         : month title
@@ -57,6 +66,10 @@ obj.months = 3
 obj.calh = 190 * obj.months
 obj.cellw = (obj.calw - 20) / 8
 obj.cellh = (obj.calh - 20) / 8 / obj.months
+-- Nominal height = grid + legend strip. Every vertical position is a fraction
+-- of TOTAL_H and the canvas is sized to content_h / calh * TOTAL_H, which keeps
+-- the grid at its usual proportions and puts the legend in the extra strip.
+local TOTAL_H = obj.calh + LEGEND_H
 -- Holiday label font size (overlaid at top-left of date cells)
 local LABEL_FONT_SIZE = 7
 
@@ -81,6 +94,12 @@ end
 --- Canvas coordinates are given as decimal fractions (1.0 = 100%%)
 local function frac(value, total)
 	return tostring(value / total)
+end
+
+--- Approximate rendered width of a CJK caption (full-width glyphs)
+local function textWidth(str, size)
+	local n = utf8 and utf8.len and utf8.len(str)
+	return (n or #str) * size
 end
 
 local function updateCalCanvas()
@@ -173,7 +192,7 @@ local function updateCalCanvas()
 					-- col_i maps directly to canvas column (1=Sun, 7=Sat)
 					obj.canvas[MONTH_BLOCK * month_index].frame.x = tostring((10 + obj.cellw * col_i) / obj.calw)
 					obj.canvas[MONTH_BLOCK * month_index].frame.y =
-						tostring((10 + obj.cellh * (row_i + 1) + offset * (month_index - 1)) / obj.calh)
+						tostring((10 + obj.cellh * (row_i + 1) + offset * (month_index - 1)) / TOTAL_H)
 				elseif month ~= current_month then
 					obj.canvas[MONTH_BLOCK * month_index].fillColor = { red = 0, blue = 0, green = 0, alpha = 0 }
 				end
@@ -202,10 +221,11 @@ local function updateCalCanvas()
 			end
 			obj.canvas[51 + i + (month_index - 1) * MONTH_BLOCK].text = yearweek_rowvalue or ""
 		end
-		-- trim the canvas
+		-- trim the canvas: the grid plus the legend strip below it
+		local content_h = 20 + (obj.calh - 20) / 8 * (needed_rownum + 2)
 		obj.canvas:size({
 			w = obj.calw,
-			h = 20 + (obj.calh - 20) / 8 * (needed_rownum + 2),
+			h = content_h / obj.calh * TOTAL_H,
 		})
 	end
 end
@@ -251,9 +271,9 @@ function obj:init()
 			textAlignment = "center",
 			frame = {
 				x = tostring(10 / obj.calw),
-				y = tostring((10 + offset * (month_index - 1)) / obj.calh),
+				y = tostring((10 + offset * (month_index - 1)) / TOTAL_H),
 				w = tostring(1 - 20 / obj.calw),
-				h = tostring((obj.calh - 20) / 8 / obj.calh / 3),
+				h = tostring((obj.calh - 20) / 8 / TOTAL_H / 3),
 			},
 		}
 
@@ -271,9 +291,9 @@ function obj:init()
 				textAlignment = "center",
 				frame = {
 					x = tostring((10 + obj.cellw * i) / obj.calw),
-					y = tostring((10 + obj.cellh + offset * (month_index - 1)) / obj.calh),
+					y = tostring((10 + obj.cellh + offset * (month_index - 1)) / TOTAL_H),
 					w = tostring(obj.cellw / obj.calw),
-					h = tostring(obj.cellh / obj.calh),
+					h = tostring(obj.cellh / TOTAL_H),
 				},
 			}
 		end
@@ -290,9 +310,9 @@ function obj:init()
 					textAlignment = "center",
 					frame = {
 						x = tostring((10 + obj.cellw * col) / obj.calw),
-						y = tostring((10 + obj.cellh * (row + 1) + offset * (month_index - 1)) / obj.calh),
+						y = tostring((10 + obj.cellh * (row + 1) + offset * (month_index - 1)) / TOTAL_H),
 						w = tostring(obj.cellw / obj.calw),
-						h = tostring(obj.cellh / obj.calh),
+						h = tostring(obj.cellh / TOTAL_H),
 					},
 				}
 			end
@@ -309,9 +329,9 @@ function obj:init()
 				textAlignment = "center",
 				frame = {
 					x = tostring(10 / obj.calw),
-					y = tostring((10 + obj.cellh * (i + 1) + offset * (month_index - 1)) / obj.calh),
+					y = tostring((10 + obj.cellh * (i + 1) + offset * (month_index - 1)) / TOTAL_H),
 					w = tostring(obj.cellw / obj.calw),
-					h = tostring(obj.cellh / obj.calh),
+					h = tostring(obj.cellh / TOTAL_H),
 				},
 			}
 		end
@@ -326,7 +346,7 @@ function obj:init()
 					type = "circle",
 					action = "skip",   -- updateCalCanvas shows it on holiday / workday cells
 					radius = BADGE_RADIUS,
-					center = { x = frac(center.x, obj.calw), y = frac(center.y, obj.calh) },
+					center = { x = frac(center.x, obj.calw), y = frac(center.y, TOTAL_H) },
 					fillColor = holiday_color,
 				}
 			end
@@ -345,9 +365,9 @@ function obj:init()
 					textAlignment = "center",
 					frame = {
 						x = frac(center.x - LABEL_BOX_W / 2, obj.calw),
-						y = frac(center.y - LABEL_BOX_H / 2 + LABEL_Y_ADJUST, obj.calh),
+						y = frac(center.y - LABEL_BOX_H / 2 + LABEL_Y_ADJUST, TOTAL_H),
 						w = frac(LABEL_BOX_W, obj.calw),
-						h = frac(LABEL_BOX_H, obj.calh),
+						h = frac(LABEL_BOX_H, TOTAL_H),
 					},
 				}
 			end
@@ -360,9 +380,73 @@ function obj:init()
 			roundedRectRadii = { xRadius = 3, yRadius = 3 },
 			frame = {
 				x = tostring((10 + obj.cellw) / obj.calw),
-				y = tostring((10 + obj.cellh * 2 + offset * (month_index - 1)) / obj.calh),
+				y = tostring((10 + obj.cellh * 2 + offset * (month_index - 1)) / TOTAL_H),
 				w = tostring(obj.cellw / obj.calw),
-				h = tostring(obj.cellh / obj.calh),
+				h = tostring(obj.cellh / TOTAL_H),
+			},
+		}
+	end
+
+	-- Legend: what each colour means
+	local legend_items = {
+		{ glyph = "休", color = holiday_color,       text = "中国节假日" },
+		{ glyph = "休", color = japan_holiday_color, text = "日本节假日" },
+		{ glyph = "班", color = workday_color,       text = "调休补班" },
+		{ glyph = nil,  color = weekend_color,       text = "周末" },
+	}
+	local legend_w = LEGEND_GAP * (#legend_items - 1)
+	for _, item in ipairs(legend_items) do
+		item.text_w = textWidth(item.text, LEGEND_TEXT_SIZE)
+		item.w = 2 * LEGEND_RADIUS + LEGEND_DISC_GAP + item.text_w
+		legend_w = legend_w + item.w
+	end
+	local legend_x = (obj.calw - legend_w) / 2
+	local legend_y = obj.calh + LEGEND_H / 2
+	local legend_idx = MONTH_BLOCK * obj.months   -- last index used by the grid
+	for _, item in ipairs(legend_items) do
+		item.disc_cx = legend_x + LEGEND_RADIUS
+		item.text_x = legend_x + 2 * LEGEND_RADIUS + LEGEND_DISC_GAP
+		legend_idx = legend_idx + 1
+		obj.canvas[legend_idx] = {
+			type = "circle",
+			action = "fill",
+			radius = LEGEND_RADIUS,
+			center = { x = frac(item.disc_cx, obj.calw), y = frac(legend_y, TOTAL_H) },
+			fillColor = item.color,
+		}
+		if item.glyph then
+			legend_idx = legend_idx + 1
+			obj.canvas[legend_idx] = {
+				type = "text",
+				text = item.glyph,
+				textFont = "Courier",
+				textSize = LABEL_FONT_SIZE,
+				textColor = badge_text_color,
+				textAlignment = "center",
+				frame = {
+					x = frac(item.disc_cx - LABEL_BOX_W / 2, obj.calw),
+					y = frac(legend_y - LABEL_BOX_H / 2 + LABEL_Y_ADJUST, TOTAL_H),
+					w = frac(LABEL_BOX_W, obj.calw),
+					h = frac(LABEL_BOX_H, TOTAL_H),
+				},
+			}
+		end
+		legend_x = legend_x + item.w + LEGEND_GAP
+	end
+	for _, item in ipairs(legend_items) do
+		legend_idx = legend_idx + 1
+		obj.canvas[legend_idx] = {
+			type = "text",
+			text = item.text,
+			textFont = "Courier",
+			textSize = LEGEND_TEXT_SIZE,
+			textColor = calcolor,
+			textAlignment = "left",
+			frame = {
+				x = frac(item.text_x, obj.calw),
+				y = frac(legend_y - LEGEND_LABEL_BOX_H / 2 + LEGEND_LABEL_Y_ADJUST, TOTAL_H),
+				w = frac(item.text_w + 6, obj.calw),
+				h = frac(LEGEND_LABEL_BOX_H, TOTAL_H),
 			},
 		}
 	end
