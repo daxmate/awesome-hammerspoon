@@ -23,9 +23,28 @@ local weekend_color         = { hex = "#FF7878" }
 local holiday_color         = { hex = "#FFB800" }   -- bright amber/gold, distinct from weekend pink-red
 local japan_holiday_color   = { hex = "#4FC3F7" }   -- sky blue, distinct from both
 local workday_color         = { hex = "#9AA7B8" }   -- slate blue-grey: 调休补班 (weekend that is a workday)
+local badge_text_color      = { hex = "#1B1B1B" }   -- dark glyph on top of the coloured badge
 
--- Per-month canvas element block size (58 + 42 holiday labels)
-local MONTH_BLOCK = 100
+-- Badge circle geometry (canvas points)
+local BADGE_RADIUS   = 4.6   -- badge ⌀9.2pt; measured to clear the 16pt day digits
+local BADGE_MARGIN_X = 5.4   -- centre distance from the cell's right edge
+local BADGE_MARGIN_Y = 5.0   -- centre distance from the cell's top edge
+local LABEL_BOX_W    = 16
+local LABEL_BOX_H    = 12
+local DAY_NUMBER_SHIFT = 3.0 -- badge cells: nudge the day number left so the badge never clips it
+
+-- Per-month canvas element block layout (index bases inside one month block):
+--   1                         : background rectangle
+--   2                         : month title
+--   3 .. 9                    : weekday header
+--   10 .. 51                  : day numbers
+--   52 .. 57                  : week numbers
+--   101 .. 142                : holiday / workday badge circles
+--   143 .. 184                : holiday / workday labels (休 / 班)
+--   MONTH_BLOCK * month_index : today highlight
+local MONTH_BLOCK = 200
+local IDX_BADGE_BASE = 100
+local IDX_LABEL_BASE = 142
 
 obj.calw = 260
 obj.months = 3
@@ -42,6 +61,20 @@ local function sunday_first_weekday(date)
 	else
 		return wday + 1
 	end
+end
+
+--- Canvas-point centre of a cell's badge circle
+local function cellBadgeCenter(col, row, month_index)
+	local offset = obj.calh / obj.months
+	return {
+		x = 10 + obj.cellw * (col + 1) - BADGE_MARGIN_X,
+		y = 10 + obj.cellh * (row + 1) + BADGE_MARGIN_Y + offset * (month_index - 1),
+	}
+end
+
+--- Canvas coordinates are given as decimal fractions (1.0 = 100%%)
+local function frac(value, total)
+	return tostring(value / total)
 end
 
 local function updateCalCanvas()
@@ -89,6 +122,8 @@ local function updateCalCanvas()
 				local caltable_idx = 7 * (row_i - 1) + col_i + (month_index - 1) * MONTH_BLOCK
 				if day_number <= 0 or day_number > maxday_of_month then
 					obj.canvas[9 + caltable_idx].text = ""
+					obj.canvas[IDX_LABEL_BASE + 7 * (row_i - 1) + col_i + (month_index - 1) * MONTH_BLOCK].text = ""
+					obj.canvas[IDX_BADGE_BASE + 7 * (row_i - 1) + col_i + (month_index - 1) * MONTH_BLOCK].action = "skip"
 				else
 					obj.canvas[9 + caltable_idx].text = day_number
 					-- Apply holiday / weekend coloring
@@ -96,30 +131,37 @@ local function updateCalCanvas()
 					local isHol, holData = holidays:isHoliday(year, month, day_number)
 					local isWork, workData = holidays:isWorkday(year, month, day_number)
 					local isJpHol, jpHolData = holidays:isJapaneseHoliday(year, month, day_number)
-					-- Update abbreviation label (starts at index 58 within each month block)
-					local label_idx = 9 + caltable_idx + 48  -- 58 - (9+42_first_cell) offset
-					-- equivalent to: 57 + 7*(row_i-1) + col_i + (month_index-1)*MONTH_BLOCK
+					-- Badge circle + label (indexes must match the ones created in init())
+					local badge_idx = IDX_BADGE_BASE + 7 * (row_i - 1) + col_i + (month_index - 1) * MONTH_BLOCK
+					local label_idx = IDX_LABEL_BASE + 7 * (row_i - 1) + col_i + (month_index - 1) * MONTH_BLOCK
+					local label_text, badge_color
 					if isHol then
 						obj.canvas[9 + caltable_idx].textColor = holiday_color
-						obj.canvas[label_idx].text = holData.abbr or ""
-						obj.canvas[label_idx].textColor = holiday_color
+						label_text, badge_color = holData.abbr or "休", holiday_color
 					elseif isWork then
 						-- 调休补班：数字用正常工作日的颜色，角标"班"提示这天要上班
 						obj.canvas[9 + caltable_idx].textColor = calcolor
-						obj.canvas[label_idx].text = workData.abbr or "班"
-						obj.canvas[label_idx].textColor = workday_color
+						label_text, badge_color = workData.abbr or "班", workday_color
 					elseif isJpHol then
 						obj.canvas[9 + caltable_idx].textColor = japan_holiday_color
-						obj.canvas[label_idx].text = jpHolData.abbr or ""
-						obj.canvas[label_idx].textColor = japan_holiday_color
+						label_text, badge_color = jpHolData.abbr or "休", japan_holiday_color
+					elseif col_i == 1 or col_i == 7 then
+						obj.canvas[9 + caltable_idx].textColor = weekend_color
 					else
-						obj.canvas[label_idx].text = ""
-						if col_i == 1 or col_i == 7 then
-							obj.canvas[9 + caltable_idx].textColor = weekend_color
-						else
-							obj.canvas[9 + caltable_idx].textColor = calcolor
-						end
+						obj.canvas[9 + caltable_idx].textColor = calcolor
 					end
+					if label_text then
+						-- 圆圈底色取原文字色，文字换成反差色
+						obj.canvas[badge_idx].action = "fill"
+						obj.canvas[badge_idx].fillColor = badge_color
+						obj.canvas[label_idx].text = label_text
+					else
+						obj.canvas[badge_idx].action = "skip"
+						obj.canvas[label_idx].text = ""
+					end
+					-- 有角标时把日期数字左移一点，避免被圆底压住（实测 3pt 即可完全不遮挡）
+					local day_shift = label_text and DAY_NUMBER_SHIFT or 0
+					obj.canvas[9 + caltable_idx].frame.x = frac(10 + obj.cellw * col_i - day_shift, obj.calw)
 				end
 				if month == current_month and day_number == current_day then
 					-- col_i maps directly to canvas column (1=Sun, 7=Sat)
@@ -269,24 +311,37 @@ function obj:init()
 		end
 
 		-- today cover rectangle
-		-- Create holiday abbreviation labels (overlaid at top-left of each date cell)
-		-- NOTE: must be created BEFORE today-cover to maintain sequential index order
+		-- Badge circles behind the 休/班 labels (drawn over the day numbers)
+		-- NOTE: created BEFORE the labels and the today-cover to keep index order
 		for row = 1, 6 do
 			for col = 1, 7 do
-				-- label index = 58 + 7*(row-1) + (col-1) + (month_index-1)*MONTH_BLOCK
-				--              = 57 + 7*(row-1) + col + (month_index-1)*MONTH_BLOCK
-				obj.canvas[57 + 7 * (row - 1) + col + (month_index - 1) * MONTH_BLOCK] = {
+				local center = cellBadgeCenter(col, row, month_index)
+				obj.canvas[IDX_BADGE_BASE + 7 * (row - 1) + col + (month_index - 1) * MONTH_BLOCK] = {
+					type = "circle",
+					action = "skip",   -- updateCalCanvas shows it on holiday / workday cells
+					radius = BADGE_RADIUS,
+					center = { x = frac(center.x, obj.calw), y = frac(center.y, obj.calh) },
+					fillColor = holiday_color,
+				}
+			end
+		end
+
+		-- 休 / 班 labels, centred inside the badge circle
+		for row = 1, 6 do
+			for col = 1, 7 do
+				local center = cellBadgeCenter(col, row, month_index)
+				obj.canvas[IDX_LABEL_BASE + 7 * (row - 1) + col + (month_index - 1) * MONTH_BLOCK] = {
 					type = "text",
 					text = "",
 					textFont = "Courier",
 					textSize = LABEL_FONT_SIZE,
-					textColor = holiday_color,
-					textAlignment = "right",
+					textColor = badge_text_color,
+					textAlignment = "center",
 					frame = {
-						x = tostring((10 + obj.cellw * col) / obj.calw),
-						y = tostring((10 + obj.cellh * (row + 1) + 1 + offset * (month_index - 1)) / obj.calh),
-						w = tostring(obj.cellw / obj.calw),
-						h = tostring(obj.cellh / 2 / obj.calh),
+						x = frac(center.x - LABEL_BOX_W / 2, obj.calw),
+						y = frac(center.y - LABEL_BOX_H / 2, obj.calh),
+						w = frac(LABEL_BOX_W, obj.calw),
+						h = frac(LABEL_BOX_H, obj.calh),
 					},
 				}
 			end
