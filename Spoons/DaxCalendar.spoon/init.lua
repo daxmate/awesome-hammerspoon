@@ -84,30 +84,20 @@ local weeknumcolor       = { red = 246 / 255, blue = 246 / 255, green = 246 / 25
 local VIEW_3MONTH = "3month"
 local VIEW_YEAR   = "year"
 
--- ---- year view geometry: 12 mini months in 4 columns x 3 rows -------------
--- The year canvas is twice as wide as the 3-month one and exactly as tall (both
--- heights come from canvasHeightForRows()), so 4 x 3 is the shape that fits.
--- A mini month is one title line plus up to 6 rows of day numbers. Still no
--- 休/班 badges, no week-number column and no weekday header row.
-local YEAR_COLS        = 4
-local YEAR_ROWS        = 3
-local YEAR_W           = 2 * obj.calw                   -- 520pt
-local MINI_W           = (YEAR_W - 20) / YEAR_COLS      -- ~125pt
-local MINI_TITLE_H     = 12
-local MINI_CELL_W      = MINI_W / 7                     -- ~17.9pt (12pt digits fit)
--- Top strip: room for the clickable view toggle in the canvas' top-right corner
-local YEAR_TOP         = 22
-local YEAR_ROW_GAP     = 6
-local MINI_TITLE_SIZE  = 11
-local MINI_DAY_SIZE    = 12
--- Per-mini-month element block (index base inside the block):
---   1        : title line
---   2 .. 43  : day numbers (6 rows x 7 cols)
---   44       : today highlight (the block's last index)
-local MINI_BLOCK       = 44
--- element 1 of the year canvas is the shared translucent panel, so every
--- mini-month block starts one index later
-local MINI_BLOCK_OFFSET = 1
+-- One month block is exactly the block the 3-month view has always drawn:
+-- BLOCK_W x BLOCK_H points, its internal spacing included.
+local BLOCK_W = obj.calw                 -- 260pt
+local BLOCK_H = obj.calh / obj.months    -- 190pt
+
+-- ---- year view: 12 full month blocks in 3 columns x 4 rows -----------------
+-- Each row is one quarter (1-3 / 4-6 / 7-9 / 10-12 月). Every block is built by
+-- drawMonthBlock() -- the same function the 3-month view uses -- so the two
+-- views cannot drift apart. The blocks tile the canvas exactly: 3 x 260 = 780
+-- wide and 4 x 190 = 760 tall, with the legend strip below.
+local YEAR_COLS    = 3
+local YEAR_ROWS    = 4
+local YEAR_W       = YEAR_COLS * BLOCK_W                 -- 780pt
+local YEAR_TOTAL_H = YEAR_ROWS * BLOCK_H + LEGEND_H      -- 786pt
 
 -- View-toggle label: a small clickable text element in the canvas' top-right
 -- corner. `trackMouseDown` makes its frame the hit area (text elements track by
@@ -121,6 +111,22 @@ local TOGGLE_TEXT_SIZE = 8
 local TOGGLE_LABELS    = {
 	[VIEW_3MONTH] = "全年 ▸",
 	[VIEW_YEAR]   = "三月 ▾",
+}
+
+-- Month names for the block titles (一月 .. 十二月)
+local MONTH_LABELS = {
+	"一月",
+	"二月",
+	"三月",
+	"四月",
+	"五月",
+	"六月",
+	"七月",
+	"八月",
+	"九月",
+	"十月",
+	"十一月",
+	"十二月",
 }
 
 -- Legend items, shared by both views
@@ -160,46 +166,11 @@ local function windowMonth(month_index)
 	return year, month
 end
 
---- Grid rows needed by a window slot. updateCalCanvas sizes the 3-month canvas
---- from the LAST slot's row count, so the year view asks for the same slot to
---- end up exactly as tall.
-local function windowRowsNeeded(month_index)
-	local year, month = windowMonth(month_index)
-	local next_month = (month + 1) % 12
-	local firstday_of_next_month = os.time({ year = year, month = next_month, day = 1 })
-	local maxday_of_month = os.date("*t", firstday_of_next_month - 24 * 60 * 60).day
-	local weekday_of_firstday = os.date("*t", os.time({ year = year, month = month, day = 1 })).wday
-	return math.ceil((weekday_of_firstday + maxday_of_month - 1) / 7)
-end
-
---- Year-view metrics. The canvas height tracks the 3-month view, so the mini
---- month height (and with it the day-cell height) is recomputed on every build.
-local year_metrics = nil
-local function computeYearMetrics()
-	local total_h = canvasHeightForRows(windowRowsNeeded(obj.months))
-	local grid_h = total_h - YEAR_TOP - LEGEND_H
-	local mini_h = (grid_h - (YEAR_ROWS - 1) * YEAR_ROW_GAP) / YEAR_ROWS
+--- Canvas-point centre of a day cell's badge circle inside a month block.
+local function blockBadgeCenter(x_origin, y_origin, col, row)
 	return {
-		total_h = total_h,
-		mini_h = mini_h,
-		cell_h = (mini_h - MINI_TITLE_H) / 6,
-		grid_bottom = total_h - LEGEND_H,
-	}
-end
-
---- Top-left corner of mini month `month` inside the year canvas.
-local function miniMonthOrigin(month)
-	local mini_col = (month - 1) % YEAR_COLS
-	local mini_row = math.floor((month - 1) / YEAR_COLS)
-	return 10 + mini_col * MINI_W, YEAR_TOP + mini_row * (year_metrics.mini_h + YEAR_ROW_GAP)
-end
-
---- Canvas-point centre of a cell's badge circle
-local function cellBadgeCenter(col, row, month_index)
-	local offset = obj.calh / obj.months
-	return {
-		x = 10 + obj.cellw * (col + 1) - BADGE_MARGIN_X,
-		y = 10 + obj.cellh * (row + 1) + BADGE_MARGIN_Y + offset * (month_index - 1),
+		x = x_origin + 10 + obj.cellw * (col + 1) - BADGE_MARGIN_X,
+		y = y_origin + 10 + obj.cellh * (row + 1) + BADGE_MARGIN_Y,
 	}
 end
 
@@ -217,7 +188,7 @@ end
 --- Append the legend strip to `canvas` starting after index `start_idx`.
 --- `legend_y` is the strip's centre in canvas points and `total_h` the
 --- denominator the y fractions resolve against (calh + LEGEND_H for the
---- 3-month view, year_metrics.total_h for the year view). Returns the last index used.
+--- 3-month view, YEAR_TOTAL_H for the year view). Returns the last index used.
 local function drawLegend(canvas, start_idx, legend_y, total_h, layout_w)
 	layout_w = layout_w or obj.calw
 	local items = {}
@@ -307,125 +278,286 @@ local function drawViewToggle(canvas, index, total_h, mode, layout_w)
 	return i
 end
 
-local function updateCalCanvas()
-	local offset = obj.calh / obj.months
-	local chinese_months = {
-		"一月",
-		"二月",
-		"三月",
-		"四月",
-		"五月",
-		"六月",
-		"七月",
-		"八月",
-		"九月",
-		"十月",
-		"十一月",
-		"十二月",
+--- Create every element of one month block, in index order (hs.canvas only
+--- accepts contiguous appends). `(x_origin, y_origin)` is the block's top-left
+--- corner in canvas points and `layout` holds the fraction denominators, so the
+--- same function serves the 3-month view (x_origin = 0) and the year grid.
+---
+--- Block layout, as offsets from `base`:
+---   1                   : rounded panel
+---   2                   : month title (2026年 一月)
+---   3 .. 9              : weekday header 日一二三四五六
+---   10 .. 51            : 42 day numbers
+---   52 .. 57            : 6 week numbers
+---   58 .. 99            : 42 badge circles
+---   100 .. 141          : 42 休 / 班 labels
+---   142 (= MONTH_BLOCK) : today highlight
+local function createMonthBlock(canvas, base, x_origin, y_origin, layout, panel)
+	local w, h = layout.w, layout.h
+	local cellw, cellh = obj.cellw, obj.cellh
+
+	-- 1: rounded panel. The 3-month view keeps its single frame-less panel
+	-- covering the whole canvas; the year grid draws one per month block.
+	canvas[base + 1] = {
+		id = "cal_bg",
+		type = "rectangle",
+		action = "fill",
+		fillColor = panel.color,
+		roundedRectRadii = { xRadius = 10, yRadius = 10 },
 	}
+	if panel.framed then
+		canvas[base + 1].frame = {
+			x = frac(x_origin, w),
+			y = frac(y_origin, h),
+			w = frac(BLOCK_W, w),
+			h = frac(BLOCK_H, h),
+		}
+	end
+
+	-- 2: month title
+	canvas[base + 2] = {
+		id = "cal_title",
+		type = "text",
+		text = "",
+		textFont = "Courier",
+		textSize = 16,
+		textColor = calcolor,
+		textAlignment = "center",
+		frame = {
+			x = frac(x_origin + 10, w),
+			y = frac(10 + y_origin, h),
+			w = frac(BLOCK_W - 20, w),
+			-- same operation order as the original title box:
+			-- (calh - 20) / 8 / layout_h / months, so the 3-month element stays
+			-- bit-identical and the year block gets the same nominal height
+			h = frac((obj.calh - 20) / 8 / h, obj.months),
+		},
+	}
+
+	-- 3..9: weekday header
+	local weeknames = { "日", "一", "二", "三", "四", "五", "六" }
+	for i = 1, #weeknames do
+		canvas[base + 2 + i] = {
+			id = "cal_weekday",
+			type = "text",
+			text = weeknames[i],
+			textFont = "Courier",
+			textSize = 12,
+			textColor = cal_header_color,
+			textAlignment = "center",
+			frame = {
+				x = frac(x_origin + 10 + cellw * i, w),
+				y = frac(10 + cellh + y_origin, h),
+				w = frac(cellw, w),
+				h = frac(cellh, h),
+			},
+		}
+	end
+
+	-- 10..51: 7x6 day grid
+	for row = 1, 6 do
+		for col = 1, 7 do
+			canvas[base + 9 + 7 * (row - 1) + col] = {
+				type = "text",
+				text = "",
+				textFont = "Courier",
+				textSize = 16,
+				textColor = (col == 1 or col == 7) and weekend_color or calcolor,
+				textAlignment = "center",
+				frame = {
+					x = frac(x_origin + 10 + cellw * col, w),
+					y = frac(10 + cellh * (row + 1) + y_origin, h),
+					w = frac(cellw, w),
+					h = frac(cellh, h),
+				},
+			}
+		end
+	end
+
+	-- 52..57: week-number column
+	for i = 1, 6 do
+		canvas[base + 51 + i] = {
+			type = "text",
+			text = "",
+			textFont = "Courier",
+			textSize = 16,
+			textColor = weeknumcolor,
+			textAlignment = "center",
+			frame = {
+				x = frac(x_origin + 10, w),
+				y = frac(10 + cellh * (i + 1) + y_origin, h),
+				w = frac(cellw, w),
+				h = frac(cellh, h),
+			},
+		}
+	end
+
+	-- 58..99: badge circles behind the 休/班 labels
+	for row = 1, 6 do
+		for col = 1, 7 do
+			local center = blockBadgeCenter(x_origin, y_origin, col, row)
+			canvas[base + IDX_BADGE_BASE + 7 * (row - 1) + col] = {
+				type = "circle",
+				action = "skip",   -- updateMonthBlock shows it on holiday / workday cells
+				radius = BADGE_RADIUS,
+				center = { x = frac(center.x, w), y = frac(center.y, h) },
+				fillColor = holiday_color,
+			}
+		end
+	end
+
+	-- 100..141: 休 / 班 labels, centred inside their badge circle
+	for row = 1, 6 do
+		for col = 1, 7 do
+			local center = blockBadgeCenter(x_origin, y_origin, col, row)
+			canvas[base + IDX_LABEL_BASE + 7 * (row - 1) + col] = {
+				type = "text",
+				text = "",
+				textFont = "Courier",
+				textSize = LABEL_FONT_SIZE,
+				textColor = badge_text_color,
+				textAlignment = "center",
+				frame = {
+					x = frac(center.x - LABEL_BOX_W / 2, w),
+					y = frac(center.y - LABEL_BOX_H / 2 + LABEL_Y_ADJUST, h),
+					w = frac(LABEL_BOX_W, w),
+					h = frac(LABEL_BOX_H, h),
+				},
+			}
+		end
+	end
+
+	-- 142: today highlight (the block's last index)
+	canvas[base + MONTH_BLOCK] = {
+		type = "rectangle",
+		action = "fill",
+		fillColor = caltodaycolor,
+		roundedRectRadii = { xRadius = 3, yRadius = 3 },
+		frame = {
+			x = frac(x_origin + 10 + cellw, w),
+			y = frac(10 + cellh * 2 + y_origin, h),
+			w = frac(cellw, w),
+			h = frac(cellh, h),
+		},
+	}
+end
+
+--- Fill one month block in: title, day numbers with holiday/weekend colours,
+--- 休/班 badges, week numbers and the today highlight. Returns the number of grid
+--- rows the month needs (the 3-month canvas is sized from its last block).
+local function updateMonthBlock(canvas, base, x_origin, y_origin, layout, year, month)
+	local w, h = layout.w, layout.h
+	local cellw, cellh = obj.cellw, obj.cellh
 	local current_date = os.date("*t")
-	local current_year = current_date.year
 	local current_month = current_date.month
 	local current_day = current_date.day
 
-	for month_index = 1, obj.months do
-		local month_diff = month_index - obj.months // 2 - 1
-		local month = current_month + month_diff
-		local year = month < 1 and current_year - 1 or month > 12 and current_year + 1 or current_year
-		month = (month + 12) % 12
-		if month == 0 then
-			month = 12
-		end
-		local next_month = (month + 1) % 12
-		local firstday_of_next_month = os.time({ year = year, month = next_month, day = 1 })
-		local maxday_of_month = os.date("*t", firstday_of_next_month - 24 * 60 * 60).day
-		local title_string = tostring(year) .. "年" .. " " .. chinese_months[month]
-		local weekday_of_firstday = os.date("*t", os.time({ year = year, month = month, day = 1 })).wday
-		local needed_rownum = math.ceil((weekday_of_firstday + maxday_of_month - 1) / 7)
-		obj.canvas[2 + (month_index - 1) * MONTH_BLOCK].text = title_string
+	local next_month = (month + 1) % 12
+	local firstday_of_next_month = os.time({ year = year, month = next_month, day = 1 })
+	local maxday_of_month = os.date("*t", firstday_of_next_month - 24 * 60 * 60).day
+	local title_string = tostring(year) .. "年" .. " " .. MONTH_LABELS[month]
+	local weekday_of_firstday = os.date("*t", os.time({ year = year, month = month, day = 1 })).wday
+	local needed_rownum = math.ceil((weekday_of_firstday + maxday_of_month - 1) / 7)
+	canvas[base + 2].text = title_string
 
-		for row_i = 1, needed_rownum do
-			for col_i = 1, 7 do
-				-- col_i: 1=Sunday col, 2=Monday, ..., 7=Saturday
-				-- Lua wday: 1=Sunday, ..., 7=Saturday
-				local day_number = 7 * (row_i - 1) + col_i - weekday_of_firstday + 1
-				local caltable_idx = 7 * (row_i - 1) + col_i + (month_index - 1) * MONTH_BLOCK
-				if day_number <= 0 or day_number > maxday_of_month then
-					obj.canvas[9 + caltable_idx].text = ""
-					obj.canvas[IDX_LABEL_BASE + 7 * (row_i - 1) + col_i + (month_index - 1) * MONTH_BLOCK].text = ""
-					obj.canvas[IDX_BADGE_BASE + 7 * (row_i - 1) + col_i + (month_index - 1) * MONTH_BLOCK].action = "skip"
+	for row_i = 1, needed_rownum do
+		for col_i = 1, 7 do
+			-- col_i: 1=Sunday col, 2=Monday, ..., 7=Saturday
+			-- Lua wday: 1=Sunday, ..., 7=Saturday
+			local day_number = 7 * (row_i - 1) + col_i - weekday_of_firstday + 1
+			local cell = 7 * (row_i - 1) + col_i
+			local day_idx = base + 9 + cell
+			local badge_idx = base + IDX_BADGE_BASE + cell
+			local label_idx = base + IDX_LABEL_BASE + cell
+			if day_number <= 0 or day_number > maxday_of_month then
+				canvas[day_idx].text = ""
+				canvas[label_idx].text = ""
+				canvas[badge_idx].action = "skip"
+			else
+				canvas[day_idx].text = day_number
+				-- Apply holiday / weekend coloring
+				-- Priority: Chinese holiday > 调休补班 > Japanese holiday > weekend > normal
+				local isHol, holData = holidays:isHoliday(year, month, day_number)
+				local isWork, workData = holidays:isWorkday(year, month, day_number)
+				local isJpHol, jpHolData = holidays:isJapaneseHoliday(year, month, day_number)
+				local label_text, badge_color
+				if isHol then
+					canvas[day_idx].textColor = holiday_color
+					label_text, badge_color = holData.abbr or "休", holiday_color
+				elseif isWork then
+					-- 调休补班：数字用正常工作日的颜色，角标"班"提示这天要上班
+					canvas[day_idx].textColor = calcolor
+					label_text, badge_color = workData.abbr or "班", workday_color
+				elseif isJpHol then
+					canvas[day_idx].textColor = japan_holiday_color
+					label_text, badge_color = jpHolData.abbr or "休", japan_holiday_color
+				elseif col_i == 1 or col_i == 7 then
+					canvas[day_idx].textColor = weekend_color
 				else
-					obj.canvas[9 + caltable_idx].text = day_number
-					-- Apply holiday / weekend coloring
-					-- Priority: Chinese holiday > 调休补班 > Japanese holiday > weekend > normal
-					local isHol, holData = holidays:isHoliday(year, month, day_number)
-					local isWork, workData = holidays:isWorkday(year, month, day_number)
-					local isJpHol, jpHolData = holidays:isJapaneseHoliday(year, month, day_number)
-					-- Badge circle + label (indexes must match the ones created in init())
-					local badge_idx = IDX_BADGE_BASE + 7 * (row_i - 1) + col_i + (month_index - 1) * MONTH_BLOCK
-					local label_idx = IDX_LABEL_BASE + 7 * (row_i - 1) + col_i + (month_index - 1) * MONTH_BLOCK
-					local label_text, badge_color
-					if isHol then
-						obj.canvas[9 + caltable_idx].textColor = holiday_color
-						label_text, badge_color = holData.abbr or "休", holiday_color
-					elseif isWork then
-						-- 调休补班：数字用正常工作日的颜色，角标"班"提示这天要上班
-						obj.canvas[9 + caltable_idx].textColor = calcolor
-						label_text, badge_color = workData.abbr or "班", workday_color
-					elseif isJpHol then
-						obj.canvas[9 + caltable_idx].textColor = japan_holiday_color
-						label_text, badge_color = jpHolData.abbr or "休", japan_holiday_color
-					elseif col_i == 1 or col_i == 7 then
-						obj.canvas[9 + caltable_idx].textColor = weekend_color
-					else
-						obj.canvas[9 + caltable_idx].textColor = calcolor
-					end
-					if label_text then
-						-- 圆圈底色取原文字色，文字换成反差色
-						obj.canvas[badge_idx].action = "fill"
-						obj.canvas[badge_idx].fillColor = badge_color
-						obj.canvas[label_idx].text = label_text
-					else
-						obj.canvas[badge_idx].action = "skip"
-						obj.canvas[label_idx].text = ""
-					end
-					-- 有角标时把日期数字左移一点，避免被圆底压住（实测 3pt 即可完全不遮挡）
-					local day_shift = label_text and DAY_NUMBER_SHIFT or 0
-					obj.canvas[9 + caltable_idx].frame.x = frac(10 + obj.cellw * col_i - day_shift, obj.calw)
+					canvas[day_idx].textColor = calcolor
 				end
-				if month == current_month and day_number == current_day then
-					-- col_i maps directly to canvas column (1=Sun, 7=Sat)
-					obj.canvas[MONTH_BLOCK * month_index].frame.x = tostring((10 + obj.cellw * col_i) / obj.calw)
-					obj.canvas[MONTH_BLOCK * month_index].frame.y =
-						tostring((10 + obj.cellh * (row_i + 1) + offset * (month_index - 1)) / TOTAL_H)
-				elseif month ~= current_month then
-					obj.canvas[MONTH_BLOCK * month_index].fillColor = { red = 0, blue = 0, green = 0, alpha = 0 }
+				if label_text then
+					-- 圆圈底色取原文字色，文字换成反差色
+					canvas[badge_idx].action = "fill"
+					canvas[badge_idx].fillColor = badge_color
+					canvas[label_idx].text = label_text
+				else
+					canvas[badge_idx].action = "skip"
+					canvas[label_idx].text = ""
 				end
+				-- 有角标时把日期数字左移一点，避免被圆底压住（实测 3pt 即可完全不遮挡）
+				local day_shift = label_text and DAY_NUMBER_SHIFT or 0
+				canvas[day_idx].frame.x = frac(x_origin + 10 + cellw * col_i - day_shift, w)
+			end
+			if month == current_month and day_number == current_day then
+				-- col_i maps directly to canvas column (1=Sun, 7=Sat)
+				canvas[base + MONTH_BLOCK].frame.x = frac(x_origin + 10 + cellw * col_i, w)
+				canvas[base + MONTH_BLOCK].frame.y = frac(y_origin + 10 + cellh * (row_i + 1), h)
+			elseif month ~= current_month then
+				canvas[base + MONTH_BLOCK].fillColor = cal_transparent_bg
 			end
 		end
-		-- update yearweek
-		-- For each grid row, compute the week number (%W) of the Monday (column 2 = 一).
-		-- %W = Monday-based, first Monday of January = W01 (same as Apple Calendar in zh_CN).
-		for i = 1, 6 do
-			local yearweek_rowvalue
-			if i <= needed_rownum then
-				-- Grid columns: 1=日(Sun), 2=一(Mon), ..., 7=六(Sat)
-				-- Day number at (row_i, col_2): 7*(i-1) + 2 - weekday_of_firstday + 1
-				local monday_day = 7 * (i - 1) + 2 - weekday_of_firstday + 1
-				local ref_day
-				if monday_day >= 1 and monday_day <= maxday_of_month then
-					ref_day = monday_day
-				else
-					-- Row has no Monday (e.g. row starts Tue-Sat); use its first day instead
-					ref_day = 7 * (i - 1) - weekday_of_firstday + 2
-					if ref_day < 1 then ref_day = 1 end
-				end
-				local date_str = string.format("%d-%02d-%02d", year, month, ref_day)
-				local week_str = hs.execute("date -j -f '%Y-%m-%d' '" .. date_str .. "' +'%W'")
-				yearweek_rowvalue = math.tointeger(week_str)
+	end
+	-- update yearweek
+	-- For each grid row, compute the week number (%W) of the Monday (column 2 = 一).
+	-- %W = Monday-based, first Monday of January = W01 (same as Apple Calendar in zh_CN).
+	for i = 1, 6 do
+		local yearweek_rowvalue
+		if i <= needed_rownum then
+			-- Grid columns: 1=日(Sun), 2=一(Mon), ..., 7=六(Sat)
+			-- Day number at (row_i, col_2): 7*(i-1) + 2 - weekday_of_firstday + 1
+			local monday_day = 7 * (i - 1) + 2 - weekday_of_firstday + 1
+			local ref_day
+			if monday_day >= 1 and monday_day <= maxday_of_month then
+				ref_day = monday_day
+			else
+				-- Row has no Monday (e.g. row starts Tue-Sat); use its first day instead
+				ref_day = 7 * (i - 1) - weekday_of_firstday + 2
+				if ref_day < 1 then ref_day = 1 end
 			end
-			obj.canvas[51 + i + (month_index - 1) * MONTH_BLOCK].text = yearweek_rowvalue or ""
+			local date_str = string.format("%d-%02d-%02d", year, month, ref_day)
+			local week_str = hs.execute("date -j -f '%Y-%m-%d' '" .. date_str .. "' +'%W'")
+			yearweek_rowvalue = math.tointeger(week_str)
 		end
+		canvas[base + 51 + i].text = yearweek_rowvalue or ""
+	end
+	return needed_rownum
+end
+
+--- Create + fill one month block in a single pass (the year grid does both).
+local function drawMonthBlock(canvas, base, x_origin, y_origin, year, month, layout, panel)
+	createMonthBlock(canvas, base, x_origin, y_origin, layout, panel)
+	return updateMonthBlock(canvas, base, x_origin, y_origin, layout, year, month)
+end
+
+--- Redraw the 3-month view: three stacked month blocks. The canvas is trimmed
+--- to the content plus the legend strip after every block (as it always was).
+local function updateCalCanvas()
+	local layout = { w = obj.calw, h = TOTAL_H }
+	for month_index = 1, obj.months do
+		local year, month = windowMonth(month_index)
+		local needed_rownum = updateMonthBlock(obj.canvas, (month_index - 1) * MONTH_BLOCK, 0,
+			(month_index - 1) * BLOCK_H, layout, year, month)
 		-- trim the canvas: the grid plus the legend strip below it
 		obj.canvas:size({
 			w = obj.calw,
@@ -464,144 +596,21 @@ local function createCanvas(width, height)
 end
 
 --- Build the 3-month view: three month blocks + the legend strip.
+--- Build the 3-month view: three stacked month blocks, the legend strip and the
+--- clickable toggle. Every month goes through createMonthBlock(), so the year
+--- grid gets the very same block.
 local function buildThreeMonthCanvas()
-	local offset = obj.calh / obj.months
+	local layout = { w = obj.calw, h = TOTAL_H }
 
 	obj.canvas = createCanvas(obj.calw, obj.calh)
 
 	for month_index = 1, obj.months do
-		obj.canvas[1 + (month_index - 1) * MONTH_BLOCK] = {
-			id = "cal_bg",
-			type = "rectangle",
-			action = "fill",
-			fillColor = month_index == 1 and calbgcolor or cal_transparent_bg,
-			roundedRectRadii = { xRadius = 10, yRadius = 10 },
+		-- one dark rounded panel behind the whole 3-month calendar (as before)
+		local panel = {
+			color = month_index == 1 and calbgcolor or cal_transparent_bg,
+			framed = false,
 		}
-
-		obj.canvas[2 + (month_index - 1) * MONTH_BLOCK] = {
-			id = "cal_title",
-			type = "text",
-			text = "",
-			textFont = "Courier",
-			textSize = 16,
-			textColor = calcolor,
-			textAlignment = "center",
-			frame = {
-				x = tostring(10 / obj.calw),
-				y = tostring((10 + offset * (month_index - 1)) / TOTAL_H),
-				w = tostring(1 - 20 / obj.calw),
-				h = tostring((obj.calh - 20) / 8 / TOTAL_H / 3),
-			},
-		}
-
-		-- 绘制星期表头
-		-- local weeknames = { "Mo", "Tu", "We", "Th", "Fr", "Sa", "Su" }
-		local weeknames = { "日", "一", "二", "三", "四", "五", "六" }
-		for i = 1, #weeknames do
-			obj.canvas[2 + i + (month_index - 1) * MONTH_BLOCK] = {
-				id = "cal_weekday",
-				type = "text",
-				text = weeknames[i],
-				textFont = "Courier",
-				textSize = 12,
-				textColor = cal_header_color,
-				textAlignment = "center",
-				frame = {
-					x = tostring((10 + obj.cellw * i) / obj.calw),
-					y = tostring((10 + obj.cellh + offset * (month_index - 1)) / TOTAL_H),
-					w = tostring(obj.cellw / obj.calw),
-					h = tostring(obj.cellh / TOTAL_H),
-				},
-			}
-		end
-
-		-- Create 7x6 calendar table
-		for row = 1, 6 do
-			for col = 1, 7 do
-				obj.canvas[9 + 7 * (row - 1) + col + (month_index - 1) * MONTH_BLOCK] = {
-					type = "text",
-					text = "",
-					textFont = "Courier",
-					textSize = 16,
-					textColor = (col == 1 or col == 7) and weekend_color or calcolor,
-					textAlignment = "center",
-					frame = {
-						x = tostring((10 + obj.cellw * col) / obj.calw),
-						y = tostring((10 + obj.cellh * (row + 1) + offset * (month_index - 1)) / TOTAL_H),
-						w = tostring(obj.cellw / obj.calw),
-						h = tostring(obj.cellh / TOTAL_H),
-					},
-				}
-			end
-		end
-
-		-- Create yearweek column
-		for i = 1, 6 do
-			obj.canvas[51 + i + (month_index - 1) * MONTH_BLOCK] = {
-				type = "text",
-				text = "",
-				textFont = "Courier",
-				textSize = 16,
-				textColor = weeknumcolor,
-				textAlignment = "center",
-				frame = {
-					x = tostring(10 / obj.calw),
-					y = tostring((10 + obj.cellh * (i + 1) + offset * (month_index - 1)) / TOTAL_H),
-					w = tostring(obj.cellw / obj.calw),
-					h = tostring(obj.cellh / TOTAL_H),
-				},
-			}
-		end
-
-		-- today cover rectangle
-		-- Badge circles behind the 休/班 labels (drawn over the day numbers)
-		-- NOTE: created BEFORE the labels and the today-cover to keep index order
-		for row = 1, 6 do
-			for col = 1, 7 do
-				local center = cellBadgeCenter(col, row, month_index)
-				obj.canvas[IDX_BADGE_BASE + 7 * (row - 1) + col + (month_index - 1) * MONTH_BLOCK] = {
-					type = "circle",
-					action = "skip",   -- updateCalCanvas shows it on holiday / workday cells
-					radius = BADGE_RADIUS,
-					center = { x = frac(center.x, obj.calw), y = frac(center.y, TOTAL_H) },
-					fillColor = holiday_color,
-				}
-			end
-		end
-
-		-- 休 / 班 labels, centred inside the badge circle
-		for row = 1, 6 do
-			for col = 1, 7 do
-				local center = cellBadgeCenter(col, row, month_index)
-				obj.canvas[IDX_LABEL_BASE + 7 * (row - 1) + col + (month_index - 1) * MONTH_BLOCK] = {
-					type = "text",
-					text = "",
-					textFont = "Courier",
-					textSize = LABEL_FONT_SIZE,
-					textColor = badge_text_color,
-					textAlignment = "center",
-					frame = {
-						x = frac(center.x - LABEL_BOX_W / 2, obj.calw),
-						y = frac(center.y - LABEL_BOX_H / 2 + LABEL_Y_ADJUST, TOTAL_H),
-						w = frac(LABEL_BOX_W, obj.calw),
-						h = frac(LABEL_BOX_H, TOTAL_H),
-					},
-				}
-			end
-		end
-
-		obj.canvas[MONTH_BLOCK * month_index] = {
-			type = "rectangle",
-			action = "fill",
-			fillColor = caltodaycolor,
-			roundedRectRadii = { xRadius = 3, yRadius = 3 },
-			frame = {
-				x = tostring((10 + obj.cellw) / obj.calw),
-				y = tostring((10 + obj.cellh * 2 + offset * (month_index - 1)) / TOTAL_H),
-				w = tostring(obj.cellw / obj.calw),
-				h = tostring(obj.cellh / TOTAL_H),
-			},
-		}
+		createMonthBlock(obj.canvas, (month_index - 1) * MONTH_BLOCK, 0, (month_index - 1) * BLOCK_H, layout, panel)
 	end
 
 	-- Legend strip, exactly as before (first grid index is the block count)
@@ -610,145 +619,41 @@ local function buildThreeMonthCanvas()
 	drawViewToggle(obj.canvas, legend_end, TOTAL_H, VIEW_3MONTH, obj.calw)
 end
 
---- Build the year view: 12 mini months in 4 columns x 3 rows, then the legend.
---- Like the 3-month view every index is created in order (no gaps).
+--- Build the year view: 12 full month blocks in 3 columns x 4 rows (one row per
+--- quarter), then the legend strip and the toggle. Every block goes through
+--- drawMonthBlock(), the same function the 3-month view uses.
 local function buildYearCanvas()
-	year_metrics = computeYearMetrics()
-	local ym = year_metrics
-	obj.canvas = createCanvas(YEAR_W, ym.total_h)
+	local layout = { w = YEAR_W, h = YEAR_TOTAL_H }
+	local year = os.date("*t").year
 
-	-- 1: canvas background -- the same translucent rounded panel the 3-month
-	-- view draws (no frame => it spans the whole canvas)
-	obj.canvas[1] = {
-		id = "cal_bg",
-		type = "rectangle",
-		action = "fill",
-		fillColor = calbgcolor,
-		roundedRectRadii = { xRadius = 10, yRadius = 10 },
-	}
+	obj.canvas = createCanvas(YEAR_W, YEAR_TOTAL_H)
 
 	for month = 1, 12 do
-		local base = MINI_BLOCK_OFFSET + (month - 1) * MINI_BLOCK
-		local origin_x, origin_y = miniMonthOrigin(month)
-
-		-- 1: mini month title (e.g. "9月")
-		obj.canvas[base + 1] = {
-			id = "cal_mini_title",
-			type = "text",
-			text = tostring(month) .. "月",
-			textFont = "Courier",
-			textSize = MINI_TITLE_SIZE,
-			textColor = cal_header_color,
-			textAlignment = "center",
-			frame = {
-				x = frac(origin_x, YEAR_W),
-				y = frac(origin_y, ym.total_h),
-				w = frac(MINI_W, YEAR_W),
-				h = frac(MINI_TITLE_H, ym.total_h),
-			},
-		}
-
-		-- 2..43: 6 rows x 7 columns of day numbers (no weekday header, no week numbers)
-		for row_i = 1, 6 do
-			for col_i = 1, 7 do
-				obj.canvas[base + 1 + 7 * (row_i - 1) + col_i] = {
-					type = "text",
-					text = "",
-					textFont = "Courier",
-					textSize = MINI_DAY_SIZE,
-					textColor = (col_i == 1 or col_i == 7) and weekend_color or calcolor,
-					textAlignment = "center",
-					frame = {
-						x = frac(origin_x + (col_i - 1) * MINI_CELL_W, YEAR_W),
-						y = frac(origin_y + MINI_TITLE_H + (row_i - 1) * ym.cell_h, ym.total_h),
-						w = frac(MINI_CELL_W, YEAR_W),
-						h = frac(ym.cell_h, ym.total_h),
-					},
-				}
-			end
-		end
-
-		-- 44: today highlight (positioned by updateYearCanvas, block's last index)
-		obj.canvas[base + MINI_BLOCK] = {
-			type = "rectangle",
-			action = "fill",
-			fillColor = cal_transparent_bg,
-			roundedRectRadii = { xRadius = 3, yRadius = 3 },
-			frame = {
-				x = frac(origin_x, YEAR_W),
-				y = frac(origin_y + MINI_TITLE_H, ym.total_h),
-				w = frac(MINI_CELL_W, YEAR_W),
-				h = frac(ym.cell_h, ym.total_h),
-			},
-		}
+		local col = (month - 1) % YEAR_COLS
+		local row = math.floor((month - 1) / YEAR_COLS)
+		-- one rounded panel per block: the 12 blocks tile the canvas exactly, so
+		-- the whole year panel stays dark like the 3-month view's
+		drawMonthBlock(obj.canvas, (month - 1) * MONTH_BLOCK, col * BLOCK_W, row * BLOCK_H, year, month, layout,
+			{ color = calbgcolor, framed = true })
 	end
 
-	local legend_end = drawLegend(obj.canvas, MINI_BLOCK_OFFSET + MINI_BLOCK * 12, ym.grid_bottom + LEGEND_H / 2, ym.total_h, YEAR_W)
+	local legend_end = drawLegend(obj.canvas, MONTH_BLOCK * 12, YEAR_TOTAL_H - LEGEND_H / 2, YEAR_TOTAL_H, YEAR_W)
 	-- clickable view toggle, appended last (same as the 3-month view)
-	drawViewToggle(obj.canvas, legend_end, ym.total_h, VIEW_YEAR, YEAR_W)
+	drawViewToggle(obj.canvas, legend_end, YEAR_TOTAL_H, VIEW_YEAR, YEAR_W)
 end
 
---- Redraw the year view: every month of the current year.
+--- Redraw the year view: every month of the current year, same blocks.
 local function updateYearCanvas()
-	local ym = year_metrics or computeYearMetrics()
-	local current_date = os.date("*t")
-	local year = current_date.year
-	local current_month = current_date.month
-	local current_day = current_date.day
+	local layout = { w = YEAR_W, h = YEAR_TOTAL_H }
+	local year = os.date("*t").year
 
 	for month = 1, 12 do
-		local base = MINI_BLOCK_OFFSET + (month - 1) * MINI_BLOCK
-		local origin_x, origin_y = miniMonthOrigin(month)
-		local weekday_of_firstday = os.date("*t", os.time({ year = year, month = month, day = 1 })).wday
-		-- os.time() normalises month 13 into January of the next year
-		local maxday_of_month = os.date("*t", os.time({ year = year, month = month + 1, day = 1 }) - 24 * 60 * 60).day
-
-		obj.canvas[base + 1].text = tostring(month) .. "月"
-
-		for row_i = 1, 6 do
-			for col_i = 1, 7 do
-				local day_number = 7 * (row_i - 1) + col_i - weekday_of_firstday + 1
-				local cell_idx = base + 1 + 7 * (row_i - 1) + col_i
-				if day_number < 1 or day_number > maxday_of_month then
-					obj.canvas[cell_idx].text = ""
-				else
-					obj.canvas[cell_idx].text = day_number
-					-- Same priority as the 3-month view; with no badge circles the
-					-- colour alone carries the meaning here.
-					-- 中国节假日 > 调休补班 > 日本节假日 > 周末 > 平常
-					local isHol = holidays:isHoliday(year, month, day_number)
-					local isWork = holidays:isWorkday(year, month, day_number)
-					local isJpHol = holidays:isJapaneseHoliday(year, month, day_number)
-					if isHol then
-						obj.canvas[cell_idx].textColor = holiday_color
-					elseif isWork then
-						obj.canvas[cell_idx].textColor = workday_color
-					elseif isJpHol then
-						obj.canvas[cell_idx].textColor = japan_holiday_color
-					elseif col_i == 1 or col_i == 7 then
-						obj.canvas[cell_idx].textColor = weekend_color
-					else
-						obj.canvas[cell_idx].textColor = calcolor
-					end
-				end
-			end
-		end
-
-		-- today highlight (only the month containing today)
-		local highlight = obj.canvas[base + MINI_BLOCK]
-		if month == current_month then
-			local cell_n = (weekday_of_firstday - 1) + (current_day - 1)
-			local col_i = cell_n % 7 + 1
-			local row_i = math.floor(cell_n / 7) + 1
-			highlight.fillColor = caltodaycolor
-			highlight.frame.x = frac(origin_x + (col_i - 1) * MINI_CELL_W, YEAR_W)
-			highlight.frame.y = frac(origin_y + MINI_TITLE_H + (row_i - 1) * ym.cell_h, ym.total_h)
-		else
-			highlight.fillColor = cal_transparent_bg
-		end
+		local col = (month - 1) % YEAR_COLS
+		local row = math.floor((month - 1) / YEAR_COLS)
+		updateMonthBlock(obj.canvas, (month - 1) * MONTH_BLOCK, col * BLOCK_W, row * BLOCK_H, layout, year, month)
 	end
 
-	obj.canvas:size({ w = YEAR_W, h = ym.total_h })
+	obj.canvas:size({ w = YEAR_W, h = YEAR_TOTAL_H })
 end
 
 --- Bind the view-toggle hotkey. `_G.daxcalendar_keys` (e.g. { {"alt"}, "," })
