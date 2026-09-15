@@ -84,6 +84,14 @@ local weeknumcolor       = { red = 246 / 255, blue = 246 / 255, green = 246 / 25
 local VIEW_3MONTH = "3month"
 local VIEW_YEAR   = "year"
 
+-- Both views keep their own canvas alive: switching only shows/hides, so no
+-- element is ever built twice. A cached canvas is redrawn only when its content
+-- is older than this many seconds (or when the date rolled over).
+local STALE_AFTER_S   = 600
+-- Seconds after init before the year canvas is built in the background (hidden),
+-- so the first manual switch does not pay the build cost.
+local PREWARM_DELAY_S = 3
+
 -- One month block is exactly the block the 3-month view has always drawn:
 -- BLOCK_W x BLOCK_H points, its internal spacing included.
 local BLOCK_W = obj.calw                 -- 260pt
@@ -274,7 +282,7 @@ local function drawViewToggle(canvas, index, total_h, mode, layout_w)
 			h = frac(TOGGLE_H, total_h),
 		},
 	}
-	obj.toggle_idx = i
+	obj.toggle_ix[mode] = i
 	return i
 end
 
@@ -559,14 +567,14 @@ end
 
 --- Redraw the 3-month view: three stacked month blocks. The canvas is trimmed
 --- to the content plus the legend strip after every block (as it always was).
-local function updateCalCanvas()
+local function updateCalCanvas(canvas)
 	local layout = { w = obj.calw, h = TOTAL_H }
 	for month_index = 1, obj.months do
 		local year, month = windowMonth(month_index)
-		local needed_rownum = updateMonthBlock(obj.canvas, (month_index - 1) * MONTH_BLOCK, 0,
+		local needed_rownum = updateMonthBlock(canvas, (month_index - 1) * MONTH_BLOCK, 0,
 			(month_index - 1) * BLOCK_H, layout, year, month)
 		-- trim the canvas: the grid plus the legend strip below it
-		obj.canvas:size({
+		canvas:size({
 			w = obj.calw,
 			h = canvasHeightForRows(needed_rownum),
 		})
@@ -600,7 +608,9 @@ local function elementCountOf(canvas)
 	return n
 end
 
-local function createCanvas(width, height)
+--- Create a canvas window. It stays hidden unless `show_now` is true: the year
+--- canvas is built (and drawn) in the background before it is ever displayed.
+local function createCanvas(width, height, show_now)
 	local cscreen = hs.screen.mainScreen()
 	local cres = cscreen:fullFrame()
 	local canvas = hs.canvas
@@ -610,7 +620,9 @@ local function createCanvas(width, height)
 			w = width,
 			h = height,
 		})
-		:show()
+	if show_now then
+		canvas:show()
+	end
 	canvas:behavior(hs.canvas.windowBehaviors.canJoinAllSpaces)
 	-- hs.canvas only delivers mouse clicks at desktopIcon + 1 or higher; that is
 	-- still far below normal window level, so the calendar stays behind windows.
@@ -626,14 +638,13 @@ local function createCanvas(width, height)
 	return canvas
 end
 
---- Build the 3-month view: three month blocks + the legend strip.
 --- Build the 3-month view: three stacked month blocks, the legend strip and the
 --- clickable toggle. Every month goes through createMonthBlock(), so the year
---- grid gets the very same block.
+--- grid gets the very same block. The canvas is created hidden and cached.
 local function buildThreeMonthCanvas()
 	local layout = { w = obj.calw, h = TOTAL_H }
 
-	obj.canvas = createCanvas(obj.calw, obj.calh)
+	local canvas = createCanvas(obj.calw, obj.calh, false)
 
 	for month_index = 1, obj.months do
 		-- one dark rounded panel behind the whole 3-month calendar (as before)
@@ -641,50 +652,57 @@ local function buildThreeMonthCanvas()
 			color = month_index == 1 and calbgcolor or cal_transparent_bg,
 			framed = false,
 		}
-		createMonthBlock(obj.canvas, (month_index - 1) * MONTH_BLOCK, 0, (month_index - 1) * BLOCK_H, layout, panel)
+		createMonthBlock(canvas, (month_index - 1) * MONTH_BLOCK, 0, (month_index - 1) * BLOCK_H, layout, panel)
 	end
 
 	-- Legend strip, exactly as before (first grid index is the block count)
-	local legend_end = drawLegend(obj.canvas, MONTH_BLOCK * obj.months, obj.calh + LEGEND_H / 2, TOTAL_H, obj.calw)
+	local legend_end = drawLegend(canvas, MONTH_BLOCK * obj.months, obj.calh + LEGEND_H / 2, TOTAL_H, obj.calw)
 	-- clickable view toggle, appended last
-	drawViewToggle(obj.canvas, legend_end, TOTAL_H, VIEW_3MONTH, obj.calw)
+	drawViewToggle(canvas, legend_end, TOTAL_H, VIEW_3MONTH, obj.calw)
+
+	obj.canvas_3month = canvas
+	return canvas
 end
 
 --- Build the year view: 12 full month blocks in 3 columns x 4 rows (one row per
 --- quarter), then the legend strip and the toggle. Every block goes through
---- drawMonthBlock(), the same function the 3-month view uses.
+--- drawMonthBlock(), the same function the 3-month view uses. The canvas is
+--- created hidden and cached -- the switch only shows/hides it.
 local function buildYearCanvas()
 	local layout = { w = YEAR_W, h = YEAR_TOTAL_H }
 	local year = os.date("*t").year
 
-	obj.canvas = createCanvas(YEAR_W, YEAR_TOTAL_H)
+	local canvas = createCanvas(YEAR_W, YEAR_TOTAL_H, false)
 
 	for month = 1, 12 do
 		local col = (month - 1) % YEAR_COLS
 		local row = math.floor((month - 1) / YEAR_COLS)
 		-- one rounded panel per block: the 12 blocks tile the canvas exactly, so
 		-- the whole year panel stays dark like the 3-month view's
-		drawMonthBlock(obj.canvas, (month - 1) * MONTH_BLOCK, col * BLOCK_W, row * BLOCK_H, year, month, layout,
+		drawMonthBlock(canvas, (month - 1) * MONTH_BLOCK, col * BLOCK_W, row * BLOCK_H, year, month, layout,
 			{ color = calbgcolor, framed = true })
 	end
 
-	local legend_end = drawLegend(obj.canvas, MONTH_BLOCK * 12, YEAR_TOTAL_H - LEGEND_H / 2, YEAR_TOTAL_H, YEAR_W)
+	local legend_end = drawLegend(canvas, MONTH_BLOCK * 12, YEAR_TOTAL_H - LEGEND_H / 2, YEAR_TOTAL_H, YEAR_W)
 	-- clickable view toggle, appended last (same as the 3-month view)
-	drawViewToggle(obj.canvas, legend_end, YEAR_TOTAL_H, VIEW_YEAR, YEAR_W)
+	drawViewToggle(canvas, legend_end, YEAR_TOTAL_H, VIEW_YEAR, YEAR_W)
+
+	obj.canvas_year = canvas
+	return canvas
 end
 
 --- Redraw the year view: every month of the current year, same blocks.
-local function updateYearCanvas()
+local function updateYearCanvas(canvas)
 	local layout = { w = YEAR_W, h = YEAR_TOTAL_H }
 	local year = os.date("*t").year
 
 	for month = 1, 12 do
 		local col = (month - 1) % YEAR_COLS
 		local row = math.floor((month - 1) / YEAR_COLS)
-		updateMonthBlock(obj.canvas, (month - 1) * MONTH_BLOCK, col * BLOCK_W, row * BLOCK_H, layout, year, month)
+		updateMonthBlock(canvas, (month - 1) * MONTH_BLOCK, col * BLOCK_W, row * BLOCK_H, layout, year, month)
 	end
 
-	obj.canvas:size({ w = YEAR_W, h = YEAR_TOTAL_H })
+	canvas:size({ w = YEAR_W, h = YEAR_TOTAL_H })
 end
 
 --- Bind the view-toggle hotkey. `_G.daxcalendar_keys` (e.g. { {"alt"}, "," })
@@ -713,65 +731,129 @@ local function bindToggleHotkey()
 	return obj.toggle_hotkey
 end
 
---- Redraw whichever view is active (timer tick + first paint).
-function obj:render()
-	if obj.view_mode == VIEW_YEAR then
-		updateYearCanvas()
-	else
-		updateCalCanvas()
+--- The canvas cached for `view` (nil before it has been built).
+local function canvasFor(view)
+	if view == VIEW_YEAR then
+		return obj.canvas_year
 	end
-	-- keep the toggle caption in sync with the active view
-	local toggle = obj.toggle_idx and obj.canvas and obj.canvas[obj.toggle_idx]
-	if toggle then
-		toggle.text = TOGGLE_LABELS[obj.view_mode]
+	return obj.canvas_3month
+end
+
+--- True when `view`'s content is older than STALE_AFTER_S or the date changed.
+local function isStale(view)
+	local last = obj.rendered_at and obj.rendered_at[view]
+	if not last then return true end
+	local today = os.date("*t")
+	if last.day ~= today.day or last.month ~= today.month or last.year ~= today.year then
+		return true
+	end
+	return (os.time() - last.time) >= STALE_AFTER_S
+end
+
+--- Draw one view's content into its canvas. No element is created here, so this
+--- is the only work a switch can do on a cached canvas.
+local function renderView(view, canvas)
+	if view == VIEW_YEAR then
+		updateYearCanvas(canvas)
+	else
+		updateCalCanvas(canvas)
+	end
+	-- keep the toggle caption in sync with the view this canvas draws
+	local ix = obj.toggle_ix and obj.toggle_ix[view]
+	if ix and canvas[ix] then
+		canvas[ix].text = TOGGLE_LABELS[view]
+	end
+	local today = os.date("*t")
+	obj.rendered_at = obj.rendered_at or {}
+	obj.rendered_at[view] = {
+		time = os.time(),
+		day = today.day,
+		month = today.month,
+		year = today.year,
+	}
+end
+
+--- Redraw the visible canvas (timer tick + first paint).
+function obj:render()
+	if obj.canvas then
+		renderView(obj.view_mode, obj.canvas)
 	end
 end
 
---- Rebuild the canvas from scratch for the active view. hs.canvas elements can
---- only be appended contiguously, so a view switch cannot reuse or patch the
---- old element indices: the old canvas is deleted and a new one is drawn.
-function obj:rebuild()
+--- The canvas for `view`, built on first use. `built` says whether this call
+--- created it (so the caller knows its content still needs a first draw).
+local function ensureCanvas(view)
+	local canvas = canvasFor(view)
+	if canvas then return canvas, false end
+	if view == VIEW_YEAR then
+		return buildYearCanvas(), true
+	end
+	return buildThreeMonthCanvas(), true
+end
+
+--- Show `view`: hide the other canvas and redraw only when the target's content
+--- is stale (a freshly built canvas always renders once). Nothing is deleted.
+function obj:switchTo(view)
 	local t0 = nowMs()
-	local before = elementCountOf(obj.canvas)
-	if obj.canvas then
-		obj.canvas:delete()
-		obj.canvas = nil
-	end
-	local t_delete = nowMs()
-	if obj.view_mode == VIEW_YEAR then
-		buildYearCanvas()
-	else
-		buildThreeMonthCanvas()
-	end
+	local target, built = ensureCanvas(view)
 	local t_build = nowMs()
-	obj:render()
+	local previous = canvasFor(obj.view_mode)
+	-- draw while the target is still hidden, then swap: never show stale content
+	local drew = built or isStale(view)
+	if drew then
+		renderView(view, target)
+	end
 	local t_render = nowMs()
+	if previous and previous ~= target then
+		previous:hide()
+	end
+	target:show()
+	local t_show = nowMs()
+	obj.view_mode = view
+	obj.canvas = target
 	bindToggleHotkey()
 	local t_hotkey = nowMs()
-	diag(string.format("rebuild %s: delete=%.1f build=%.1f render=%.1f hotkey=%.1f total=%.1f ms, elements %s -> %s",
-		obj.view_mode, t_delete - t0, t_build - t_delete, t_render - t_build, t_hotkey - t_render,
-		t_hotkey - t0, tostring(before), tostring(elementCountOf(obj.canvas))))
-	return obj.canvas
+	diag(string.format(
+		"switch %s: build=%.1f render=%s (%.1f) hide/show=%.1f hotkey=%.1f total=%.1f ms, %s elements%s",
+		view, t_build - t0, drew and "yes" or "SKIPPED - content still fresh",
+		t_render - t_build, t_show - t_render, t_hotkey - t_show, t_hotkey - t0,
+		tostring(elementCountOf(target)), built and " (newly built)" or ""))
+	return target
 end
 
 --- Switch between the 3-month and year views.
 function obj:toggleView()
-	if obj.view_mode == VIEW_YEAR then
-		obj.view_mode = VIEW_3MONTH
-	else
-		obj.view_mode = VIEW_YEAR
-	end
-	obj:rebuild()
+	obj:switchTo(obj.view_mode == VIEW_YEAR and VIEW_3MONTH or VIEW_YEAR)
 	return obj.view_mode
+end
+
+--- Build (and draw) the year canvas while it is still hidden, so the first
+--- manual switch is instant. Nothing is shown here.
+local function prewarmYearCanvas()
+	local t0 = nowMs()
+	if canvasFor(VIEW_YEAR) then
+		diag(string.format("prewarm year: already built, %.1f ms", nowMs() - t0))
+		return
+	end
+	local canvas = ensureCanvas(VIEW_YEAR)
+	local t_build = nowMs()
+	renderView(VIEW_YEAR, canvas)
+	local t_render = nowMs()
+	diag(string.format("prewarm year: build=%.1f render=%.1f total=%.1f ms, %s elements (stays hidden)",
+		t_build - t0, t_render - t_build, t_render - t0, tostring(elementCountOf(canvas))))
 end
 
 function obj:init()
 	local t0 = nowMs()
 	diag("init start")
 	obj.view_mode = VIEW_3MONTH
+	obj.toggle_ix = {}
+	obj.rendered_at = {}
 
-	buildThreeMonthCanvas()
-	diag(string.format("init: 3-month canvas built in %.1f ms (%s elements)", nowMs() - t0, tostring(elementCountOf(obj.canvas))))
+	local canvas = buildThreeMonthCanvas()
+	canvas:show()
+	obj.canvas = canvas
+	diag(string.format("init: 3-month canvas built in %.1f ms (%s elements)", nowMs() - t0, tostring(elementCountOf(canvas))))
 
 	-- Toggle hotkey: _G.daxcalendar_keys, else alt+, (also re-bound on rebuild)
 	bindToggleHotkey()
@@ -790,9 +872,17 @@ function obj:init()
 	diag("init: fetch scheduled ok=" .. tostring(okFetch)
 		.. (okFetch and "" or (" err=" .. tostring(fetchErr))) .. string.format(" (%.1f ms)", nowMs() - t0))
 
+	-- Prewarm the year canvas a few seconds later (built and drawn while hidden)
+	-- so the first manual switch is instant instead of ~350ms.
+	if hs.timer and hs.timer.doAfter then
+		-- keep the handle: an unreferenced doAfter timer can be collected before firing
+		obj.prewarm_timer = hs.timer.doAfter(PREWARM_DELAY_S, prewarmYearCanvas)
+		diag(string.format("init: year prewarm scheduled in %ds", PREWARM_DELAY_S))
+	end
+
 	if obj.timer == nil then
 		obj.timer = hs.timer.doEvery(1800, function()
-			obj:render()
+			obj:render()   -- refresh only the visible canvas
 		end)
 		obj.timer:setNextTrigger(0)
 	else

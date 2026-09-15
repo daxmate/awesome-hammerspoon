@@ -250,12 +250,18 @@ end
 --- GET a URL as text. hs.http gets first crack. If it never calls back at all
 --- (observed on this machine: no error, no callback, no cache) fall back to the
 --- system curl through hs.task, which is known to reach these APIs here.
+-- Timers made with hs.timer.doAfter stop firing if nothing references them, so
+-- pending watchdogs are parked here until they either fire or are cancelled.
+local pending_watchdogs = {}
+
 local function httpGetText(url, callback)
     local answered = false
-    local watchdog = hs.timer.doAfter(12, function()
+    local watchdog
+    watchdog = hs.timer.doAfter(12, function()
         if answered then return end
         answered = true
-        logLine("watchdog fired: hs.http gave no answer for " .. url .. " within 12s -> trying curl")
+        pending_watchdogs[watchdog] = nil
+        logLine("watchdog fired: no answer for " .. url .. " within 12s -> trying curl")
         local task = hs.task.new("/usr/bin/curl", function(exitCode, stdout, stderr)
             local body = stdout or ""
             if exitCode == 0 and body ~= "" then
@@ -267,16 +273,22 @@ local function httpGetText(url, callback)
         end, { "-s", "--max-time", "20", "-A", API_UA, url })
         task:start()
     end)
+    pending_watchdogs[watchdog] = true
     local t_call = hs.timer.secondsSinceEpoch()
-    hs.http.get(url, { ["User-Agent"] = API_UA }, function(code, body)
+    -- hs.http.get() is SYNCHRONOUS and takes no callback (it returns code, body,
+    -- headers). The original spoon -- and my first port -- called it with a
+    -- callback, so the holiday data was never applied or cached. asyncGet is the
+    -- real asynchronous API.
+    hs.http.asyncGet(url, { ["User-Agent"] = API_UA }, function(code, body)
         if answered then return end
         answered = true
+        pending_watchdogs[watchdog] = nil
         watchdog:stop()
         logLine(string.format("hs.http answered %s in %d ms (http=%s, %d bytes)",
             url:match("([^/]+)$"), msSince(t_call), tostring(code), #(body or "")))
         callback(code, body)
     end)
-    logLine(string.format("hs.http.get(%s) dispatched in %d ms", url:match("([^/]+)$"), msSince(t_call)))
+    logLine(string.format("hs.http.asyncGet(%s) dispatched in %d ms", url:match("([^/]+)$"), msSince(t_call)))
 end
 
 -- ============================================================
