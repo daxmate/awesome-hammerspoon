@@ -576,6 +576,30 @@ end
 --- Create the canvas window sized to `height` points, showing on all spaces at
 --- the desktop-icon level. A fresh canvas is created per rebuild because
 --- hs.canvas elements can only be appended contiguously.
+-- Diagnostics: phase timings and errors are appended to a plain file, so the
+-- real behaviour can be inspected without relying on the console buffer or on
+-- hs.configdir resolving the way we expect.
+local DIAG_PATH = "/tmp/daxcalendar.log"
+local function diag(msg)
+	local f = io.open(DIAG_PATH, "a")
+	if f then
+		f:write(os.date("%H:%M:%S") .. "  " .. msg .. "\n")
+		f:close()
+	end
+	if hs.printf then hs.printf("[DaxCalendar] " .. msg) end
+end
+
+local function nowMs()
+	return hs.timer.secondsSinceEpoch() * 1000
+end
+
+local function elementCountOf(canvas)
+	if not canvas or not canvas.elementCount then return "?" end
+	local ok, n = pcall(function() return canvas:elementCount() end)
+	if not ok or type(n) ~= "number" then return "?" end
+	return n
+end
+
 local function createCanvas(width, height)
 	local cscreen = hs.screen.mainScreen()
 	local cres = cscreen:fullFrame()
@@ -707,17 +731,26 @@ end
 --- only be appended contiguously, so a view switch cannot reuse or patch the
 --- old element indices: the old canvas is deleted and a new one is drawn.
 function obj:rebuild()
+	local t0 = nowMs()
+	local before = elementCountOf(obj.canvas)
 	if obj.canvas then
 		obj.canvas:delete()
 		obj.canvas = nil
 	end
+	local t_delete = nowMs()
 	if obj.view_mode == VIEW_YEAR then
 		buildYearCanvas()
 	else
 		buildThreeMonthCanvas()
 	end
+	local t_build = nowMs()
 	obj:render()
+	local t_render = nowMs()
 	bindToggleHotkey()
+	local t_hotkey = nowMs()
+	diag(string.format("rebuild %s: delete=%.1f build=%.1f render=%.1f hotkey=%.1f total=%.1f ms, elements %s -> %s",
+		obj.view_mode, t_delete - t0, t_build - t_delete, t_render - t_build, t_hotkey - t_render,
+		t_hotkey - t0, tostring(before), tostring(elementCountOf(obj.canvas))))
 	return obj.canvas
 end
 
@@ -733,23 +766,29 @@ function obj:toggleView()
 end
 
 function obj:init()
+	local t0 = nowMs()
+	diag("init start")
 	obj.view_mode = VIEW_3MONTH
 
 	buildThreeMonthCanvas()
+	diag(string.format("init: 3-month canvas built in %.1f ms (%s elements)", nowMs() - t0, tostring(elementCountOf(obj.canvas))))
 
 	-- Toggle hotkey: _G.daxcalendar_keys, else alt+, (also re-bound on rebuild)
 	bindToggleHotkey()
+	diag(string.format("init: hotkey bound at %.1f ms", nowMs() - t0))
 
-	-- Fetch Chinese holiday data for current and neighboring years
+	-- Holiday data. Wrapped: a lookup problem must not abort the rest of init.
 	local currentYear = os.date("*t").year
-	holidays:fetchYear(currentYear - 1)
-	holidays:fetchYear(currentYear)
-	holidays:fetchYear(currentYear + 1)
-
-	-- Fetch Japanese holiday data for current and neighboring years
-	holidays:fetchJapaneseYear(currentYear - 1)
-	holidays:fetchJapaneseYear(currentYear)
-	holidays:fetchJapaneseYear(currentYear + 1)
+	local okFetch, fetchErr = pcall(function()
+		holidays:fetchYear(currentYear - 1)
+		holidays:fetchYear(currentYear)
+		holidays:fetchYear(currentYear + 1)
+		holidays:fetchJapaneseYear(currentYear - 1)
+		holidays:fetchJapaneseYear(currentYear)
+		holidays:fetchJapaneseYear(currentYear + 1)
+	end)
+	diag("init: fetch scheduled ok=" .. tostring(okFetch)
+		.. (okFetch and "" or (" err=" .. tostring(fetchErr))) .. string.format(" (%.1f ms)", nowMs() - t0))
 
 	if obj.timer == nil then
 		obj.timer = hs.timer.doEvery(1800, function()
@@ -759,6 +798,7 @@ function obj:init()
 	else
 		obj.timer:start()
 	end
+	diag(string.format("init done in %.1f ms", nowMs() - t0))
 end
 
 return obj
