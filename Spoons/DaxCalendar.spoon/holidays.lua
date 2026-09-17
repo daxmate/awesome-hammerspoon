@@ -19,167 +19,13 @@ local API_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.
 -- 日本节假日角标同样统一显示"休"（颜色仍用天蓝区分）
 local JP_HOLIDAY_ABBR = "休"
 
--- ============================================================
--- Embedded fallback data (will be augmented by API fetch)
--- ============================================================
-local EMBEDDED = {
-    ["2025"] = {
-        ["01-01"] = { name = "元旦",      abbr = "休" },
-        ["01-28"] = { name = "春节",      abbr = "休" },
-        ["01-29"] = { name = "春节",      abbr = "休" },
-        ["01-30"] = { name = "春节",      abbr = "休" },
-        ["01-31"] = { name = "春节",      abbr = "休" },
-        ["02-01"] = { name = "春节",      abbr = "休" },
-        ["02-02"] = { name = "春节",      abbr = "休" },
-        ["02-03"] = { name = "春节",      abbr = "休" },
-        ["02-04"] = { name = "春节",      abbr = "休" },
-        ["04-04"] = { name = "清明节",    abbr = "休" },
-        ["04-05"] = { name = "清明节",    abbr = "休" },
-        ["04-06"] = { name = "清明节",    abbr = "休" },
-        ["05-01"] = { name = "劳动节",    abbr = "休" },
-        ["05-02"] = { name = "劳动节",    abbr = "休" },
-        ["05-03"] = { name = "劳动节",    abbr = "休" },
-        ["05-04"] = { name = "劳动节",    abbr = "休" },
-        ["05-05"] = { name = "劳动节",    abbr = "休" },
-        ["05-31"] = { name = "端午节",    abbr = "休" },
-        ["06-01"] = { name = "端午节",    abbr = "休" },
-        ["06-02"] = { name = "端午节",    abbr = "休" },
-        ["10-01"] = { name = "国庆节",    abbr = "休" },
-        ["10-02"] = { name = "国庆节",    abbr = "休" },
-        ["10-03"] = { name = "国庆节",    abbr = "休" },
-        ["10-04"] = { name = "国庆节",    abbr = "休" },
-        ["10-05"] = { name = "国庆节",    abbr = "休" },
-        ["10-06"] = { name = "国庆节",    abbr = "休" },
-        ["10-07"] = { name = "国庆节",    abbr = "休" },
-        ["10-08"] = { name = "国庆节",    abbr = "休" },
-    },
-    ["2026"] = {
-        ["01-01"] = { name = "元旦",      abbr = "休" },
-        ["01-02"] = { name = "元旦",      abbr = "休" },
-        ["01-03"] = { name = "元旦",      abbr = "休" },
-        ["02-15"] = { name = "春节",      abbr = "休" },
-        ["02-16"] = { name = "春节",      abbr = "休" },
-        ["02-17"] = { name = "春节",      abbr = "休" },
-        ["02-18"] = { name = "春节",      abbr = "休" },
-        ["02-19"] = { name = "春节",      abbr = "休" },
-        ["02-20"] = { name = "春节",      abbr = "休" },
-        ["02-21"] = { name = "春节",      abbr = "休" },
-        ["02-22"] = { name = "春节",      abbr = "休" },
-        ["02-23"] = { name = "春节",      abbr = "休" },
-        ["04-04"] = { name = "清明",      abbr = "休" },
-        ["04-05"] = { name = "清明",      abbr = "休" },
-        ["04-06"] = { name = "清明",      abbr = "休" },
-        ["05-01"] = { name = "劳动节",    abbr = "休" },
-        ["05-02"] = { name = "劳动节",    abbr = "休" },
-        ["05-03"] = { name = "劳动节",    abbr = "休" },
-        ["05-04"] = { name = "劳动节",    abbr = "休" },
-        ["05-05"] = { name = "劳动节",    abbr = "休" },
-        ["06-19"] = { name = "端午节",    abbr = "休" },
-        ["06-20"] = { name = "端午节",    abbr = "休" },
-        ["06-21"] = { name = "端午节",    abbr = "休" },
-        ["09-25"] = { name = "中秋节",    abbr = "休" },
-        ["09-26"] = { name = "中秋节",    abbr = "休" },
-        ["09-27"] = { name = "中秋节",    abbr = "休" },
-        ["10-01"] = { name = "国庆节",    abbr = "休" },
-        ["10-02"] = { name = "国庆节",    abbr = "休" },
-        ["10-03"] = { name = "国庆节",    abbr = "休" },
-        ["10-04"] = { name = "国庆节",    abbr = "休" },
-        ["10-05"] = { name = "国庆节",    abbr = "休" },
-        ["10-06"] = { name = "国庆节",    abbr = "休" },
-        ["10-07"] = { name = "国庆节",    abbr = "休" },
-    },
-    ["2027"] = {
-        -- Will be populated by API fetch; fallback placeholder
-    },
-}
-
--- ============================================================
--- Embedded 调休补班 data (fallback when the API is unreachable)
--- Source: 国务院办公厅放假安排
--- ============================================================
-local WORKDAY_EMBEDDED = {
-    ["2025"] = {
-        ["01-26"] = { name = "春节前补班",   abbr = "班", target = "春节" },
-        ["02-08"] = { name = "春节后补班",   abbr = "班", target = "春节" },
-        ["04-27"] = { name = "劳动节前补班", abbr = "班", target = "劳动节" },
-        ["09-28"] = { name = "国庆节前补班", abbr = "班", target = "国庆节" },
-        ["10-11"] = { name = "国庆节后补班", abbr = "班", target = "国庆节" },
-    },
-    ["2026"] = {
-        ["01-04"] = { name = "元旦后补班",   abbr = "班", target = "元旦" },
-        ["02-14"] = { name = "春节前补班",   abbr = "班", target = "春节" },
-        ["02-28"] = { name = "春节后补班",   abbr = "班", target = "春节" },
-        ["05-09"] = { name = "劳动节后补班", abbr = "班", target = "劳动节" },
-        ["09-20"] = { name = "中秋节前补班", abbr = "班", target = "中秋节" },
-        ["10-10"] = { name = "国庆节后补班", abbr = "班", target = "国庆节" },
-    },
-}
-
--- ============================================================
--- Embedded Japanese holiday data (fallback)
--- ============================================================
-local JP_EMBEDDED = {
-    ["2025"] = {
-        ["01-01"] = { name = "元日",         abbr = "休" },
-        ["01-13"] = { name = "成人の日",     abbr = "休" },
-        ["02-11"] = { name = "建国記念の日", abbr = "休" },
-        ["02-23"] = { name = "天皇誕生日",   abbr = "休" },
-        ["02-24"] = { name = "振替休日",     abbr = "休" },
-        ["03-20"] = { name = "春分の日",     abbr = "休" },
-        ["04-29"] = { name = "昭和の日",     abbr = "休" },
-        ["05-03"] = { name = "憲法記念日",   abbr = "休" },
-        ["05-04"] = { name = "みどりの日",   abbr = "休" },
-        ["05-05"] = { name = "こどもの日",   abbr = "休" },
-        ["05-06"] = { name = "振替休日",     abbr = "休" },
-        ["07-21"] = { name = "海の日",       abbr = "休" },
-        ["08-11"] = { name = "山の日",       abbr = "休" },
-        ["09-15"] = { name = "敬老の日",     abbr = "休" },
-        ["09-23"] = { name = "秋分の日",     abbr = "休" },
-        ["10-13"] = { name = "スポーツの日", abbr = "休" },
-        ["11-03"] = { name = "文化の日",     abbr = "休" },
-        ["11-23"] = { name = "勤労感謝の日", abbr = "休" },
-        ["11-24"] = { name = "振替休日",     abbr = "休" },
-    },
-    ["2026"] = {
-        ["01-01"] = { name = "元日",         abbr = "休" },
-        ["01-12"] = { name = "成人の日",     abbr = "休" },
-        ["02-11"] = { name = "建国記念の日", abbr = "休" },
-        ["02-23"] = { name = "天皇誕生日",   abbr = "休" },
-        ["03-20"] = { name = "春分の日",     abbr = "休" },
-        ["04-29"] = { name = "昭和の日",     abbr = "休" },
-        ["05-03"] = { name = "憲法記念日",   abbr = "休" },
-        ["05-04"] = { name = "みどりの日",   abbr = "休" },
-        ["05-05"] = { name = "こどもの日",   abbr = "休" },
-        ["05-06"] = { name = "振替休日",     abbr = "休" },
-        ["07-20"] = { name = "海の日",       abbr = "休" },
-        ["08-11"] = { name = "山の日",       abbr = "休" },
-        ["09-21"] = { name = "敬老の日",     abbr = "休" },
-        ["09-22"] = { name = "国民の休日",   abbr = "休" },
-        ["09-23"] = { name = "秋分の日",     abbr = "休" },
-        ["10-12"] = { name = "スポーツの日", abbr = "休" },
-        ["11-03"] = { name = "文化の日",     abbr = "休" },
-        ["11-23"] = { name = "勤労感謝の日", abbr = "休" },
-    },
-    ["2027"] = {
-        ["01-01"] = { name = "元日",         abbr = "休" },
-        ["01-11"] = { name = "成人の日",     abbr = "休" },
-        ["02-11"] = { name = "建国記念の日", abbr = "休" },
-        ["02-23"] = { name = "天皇誕生日",   abbr = "休" },
-        ["03-21"] = { name = "春分の日",     abbr = "休" },
-        ["03-22"] = { name = "振替休日",     abbr = "休" },
-        ["04-29"] = { name = "昭和の日",     abbr = "休" },
-        ["05-03"] = { name = "憲法記念日",   abbr = "休" },
-        ["05-04"] = { name = "みどりの日",   abbr = "休" },
-        ["05-05"] = { name = "こどもの日",   abbr = "休" },
-        ["07-19"] = { name = "海の日",       abbr = "休" },
-        ["08-11"] = { name = "山の日",       abbr = "休" },
-        ["09-20"] = { name = "敬老の日",     abbr = "休" },
-        ["09-23"] = { name = "秋分の日",     abbr = "休" },
-        ["10-11"] = { name = "スポーツの日", abbr = "休" },
-        ["11-03"] = { name = "文化の日",     abbr = "休" },
-        ["11-23"] = { name = "勤労感謝の日", abbr = "休" },
-    },
-}
+-- Embedded fallback data (about 170 lines of pure data) lives in its own
+-- file; the API and cache results are merged on top of it.
+local DIR = debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$") or "."
+local embedded = dofile(DIR .. "/holidays_data.lua")
+local EMBEDDED = embedded.cn
+local WORKDAY_EMBEDDED = embedded.workdays
+local JP_EMBEDDED = embedded.jp
 
 -- ============================================================
 -- Internal state
@@ -210,9 +56,17 @@ local function yearKey(year)
     return tostring(year)
 end
 
+--- Where the caches and the fetch log live: beside the Spoon, not inside it, so
+--- the Spoon directory holds exactly what its repository tracks.
+local function dataDir()
+    local dir = hs.configdir .. "/DaxCalendar"
+    if hs.fs and hs.fs.mkdir then hs.fs.mkdir(dir) end   -- no-op when it exists
+    return dir
+end
+
 --- Cache file path
 local function cachePath()
-    return hs.configdir .. "/Spoons/DaxCalendar.spoon/holiday_cache.json"
+    return dataDir() .. "/holiday_cache.json"
 end
 
 local function tblCount(t)
@@ -225,13 +79,13 @@ end
 --- visible later (the console buffer is easy to miss / can be scrolled away).
 local function logLine(msg)
     local line = os.date("%Y-%m-%d %H:%M:%S") .. "  [fetch] " .. msg .. "\n"
-    local spoon_log = hs.configdir .. "/Spoons/DaxCalendar.spoon/fetch.log"
-    local f = io.open(spoon_log, "a")
+    local fetch_log = dataDir() .. "/fetch.log"
+    local f = io.open(fetch_log, "a")
     if f then
         f:write(line)
         f:close()
     else
-        line = line:gsub("\n$", "") .. "\n          (NOTE: " .. spoon_log .. " is NOT writable)\n"
+        line = line:gsub("\n$", "") .. "\n          (NOTE: " .. fetch_log .. " is NOT writable)\n"
     end
     -- always mirror next to the init/toggle diagnostics in /tmp, so a missing
     -- fetch.log can never hide what the fetch layer did
@@ -356,7 +210,7 @@ end
 -- ============================================================
 
 local function saveJpCache()
-    local path = hs.configdir .. "/Spoons/DaxCalendar.spoon/holiday_jp_cache.json"
+    local path = dataDir() .. "/holiday_jp_cache.json"
     local ok, err = hs.json.encode(jp_data)
     if ok then
         local f = io.open(path, "w")
@@ -368,7 +222,7 @@ local function saveJpCache()
 end
 
 local function loadJpCache()
-    local path = hs.configdir .. "/Spoons/DaxCalendar.spoon/holiday_jp_cache.json"
+    local path = dataDir() .. "/holiday_jp_cache.json"
     local f = io.open(path, "r")
     if f then
         local raw = f:read("*a")

@@ -45,7 +45,10 @@ luac.out
 
 private
 
-# DaxCalendar cache
+# DaxCalendar data (holiday caches + fetch.log) lives in DaxCalendar/ at the
+# repo root, i.e. outside the Spoon; the old Spoon-internal paths stay ignored
+# in case they reappear.
 Spoons/DaxCalendar.spoon/holiday_cache.json
 Spoons/DaxCalendar.spoon/holiday_jp_cache.json
 Spoons/DaxCalendar.spoon/fetch.log
+DaxCalendar/
