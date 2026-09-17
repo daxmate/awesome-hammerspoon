@@ -14,12 +14,6 @@ local L = dofile(DIR .. "/layout.lua")
 
 local M = {}
 
---- Elements of a block with `rows` week rows: pill + title + 7 weekday headers +
---- 7*rows day numbers + rows week numbers + 7*rows badges + 7*rows labels.
-function M.size(rows)
-	return 9 + 22 * rows
-end
-
 --- Monday-based week number of a date ("00" for days before the year's first
 --- Monday). Identical to BSD `date +%W` (verified against it for 2024-2028
 --- including year boundaries) but computed in-process -- the previous code
