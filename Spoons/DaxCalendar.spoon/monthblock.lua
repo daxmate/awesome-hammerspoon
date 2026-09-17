@@ -1,7 +1,9 @@
 --- === Month block ===
 ---
 --- One month of the calendar: the today circle, the month title, the weekday
---- header, the day grid, the week-number column and the 休 / 班 badges.
+--- header, the day grid, the week-number column and the 休 / 班 badges -- plus
+--- the blue half-disc that turns a badge two-tone on days that are a Chinese
+--- AND a Japanese holiday.
 ---
 --- Elements are created once, in order (hs.canvas only accepts contiguous
 --- appends), and every later update goes through the handles that build()
@@ -42,7 +44,7 @@ function M.build(canvas, x, y, rows)
 		return canvas[canvas:elementCount()]
 	end
 
-	local block = { x = x, y = y, rows = rows, days = {}, badges = {}, labels = {}, weeknums = {}, weekdays = {} }
+	local block = { x = x, y = y, rows = rows, days = {}, badges = {}, halves = {}, labels = {}, weeknums = {}, weekdays = {} }
 
 	-- today marker: a filled circle behind today's number, positioned on the
 	-- first cell by default and moved by update(). It is the block's first element,
@@ -127,6 +129,22 @@ function M.build(canvas, x, y, rows)
 		end
 	end
 
+	-- 中日重合日：上面那张金黄圆只留左半，这块天蓝半圆盖住右半（update() 按天显示）。
+	-- 也要先建满：任意一格都可能在切月后变成重合日。元素顺序是 圆 → 半圆 → 字，
+	-- 所以「休」字仍压在两种颜色之上。
+	for row = 0, rows - 1 do
+		for col = 0, 6 do
+			local center = badgeCenter(x, y, col, row)
+			block.halves[row * 7 + col + 1] = add({
+				type = "segments",
+				action = "skip",   -- update() shows it on overlap cells only
+				closed = true,
+				fillColor = L.color.japan,
+				coordinates = L.halfDisc(center.x, center.y, L.badge.radius, "right"),
+			})
+		end
+	end
+
 	for row = 0, rows - 1 do
 		for col = 0, 6 do
 			local center = badgeCenter(x, y, col, row)
@@ -151,7 +169,8 @@ function M.build(canvas, x, y, rows)
 end
 
 --- Fill the block in for `ctx.month` of `ctx.year`: title, day numbers with
---- their holiday / weekend colour, 休 / 班 badges, week numbers and today's circle.
+--- their holiday / weekend colour, 休 / 班 badges (a Chinese+Japanese holiday
+--- day gets the two-tone badge), week numbers and today's circle.
 ---
 --- Every cell is written on every pass, empty ones included, so a month that
 --- needs fewer rows than the month it replaced cannot leave stale numbers
@@ -172,10 +191,12 @@ function M.update(block, ctx)
 			-- col 0 = Sunday column, col 6 = Saturday column
 			local day_num = row * 7 + col - first_wday + 2
 			local day_el, badge_el, label_el = block.days[cell], block.badges[cell], block.labels[cell]
+			local half_el = block.halves[cell]
 			if row >= rows or day_num < 1 or day_num > days then
 				day_el.text = ""
 				label_el.text = ""
 				badge_el.action = "skip"
+				half_el.action = "skip"
 			else
 				day_el.text = day_num
 				-- Priority: Chinese holiday > 调休补班 > Japanese holiday > weekend
@@ -206,6 +227,9 @@ function M.update(block, ctx)
 					badge_el.action = "skip"
 					label_el.text = ""
 				end
+				-- 中日同为假日：圆底左半金黄 + 半圆右半天蓝（图例「中日重合」）。
+				-- 只认「中国放假 ∩ 日本节日」；调休补班日仍以「班」为优先（2025-2027 无重叠日）。
+				half_el.action = (is_holiday and is_jp) and "fill" or "skip"
 				-- 有角标时把日期数字左移一点，避免被圆底压住
 				local shift = label_text and L.badge.day_shift or 0
 				day_el.frame.x = block.x + L.pad + L.cell_w * (col + 1) - shift

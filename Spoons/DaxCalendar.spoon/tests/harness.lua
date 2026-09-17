@@ -18,8 +18,8 @@ local stub = dofile(here .. "/stub_hs.lua")
 
 local MARGIN = 20          -- the canvas is anchored this far inside the screen
 local BLOCK_BASE = 9       -- one month block: today pill + title + 7 weekday headers
-local BLOCK_PER_ROW = 22   -- ... plus 7 day numbers + 1 week number + 7 badges + 7 labels
-local LEGEND_ELEMENTS = 11 -- 4 discs + 3 glyphs + 4 captions
+local BLOCK_PER_ROW = 29   -- ... plus 7 day numbers + 1 week number + 7 badges + 7 half-discs + 7 labels
+local LEGEND_ELEMENTS = 15 -- 5 discs + 1 two-tone half + 4 glyphs + 5 captions
 local TOGGLE_ELEMENTS = 1
 
 -- ----------------------------------------------------------- controllable date ---
@@ -197,6 +197,108 @@ local function checkTodayMarker(canvas, label)
 	end
 end
 
+--- Days that are BOTH a Chinese and a Japanese public holiday. Independent
+--- expectation, cross-checked against the raw entries of the two cache files
+--- (2025: 元旦/宪法纪念日/绿之日/儿童节; 2026: + 天皇诞生日).
+local OVERLAPS = {
+	[2025] = { ["01-01"] = true, ["05-03"] = true, ["05-04"] = true, ["05-05"] = true },
+	[2026] = { ["01-01"] = true, ["02-23"] = true, ["05-03"] = true, ["05-04"] = true, ["05-05"] = true },
+}
+local JP_BLUE = "#4FC3F7"   -- L.color.japan, also used by the legend's half
+
+--- How many split badges the given months must hold: every known overlap day of
+--- a shown month.
+local function overlapCount(months)
+	local n = 0
+	for _, m in ipairs(months) do
+		for key in pairs(OVERLAPS[m.year] or {}) do
+			if tonumber(key:sub(1, 2)) == m.month then n = n + 1 end
+		end
+	end
+	return n
+end
+
+--- An overlap day must wear a SPLIT badge: the gold circle stays the left half
+--- and a filled blue half-disc covers its right half, split on the circle's
+--- vertical diameter (so the half never sticks out of the disc). Every other day
+--- must have no half at all, and the "/"-order inside the cell must stay
+--- circle -> half -> 休, or the glyph would be painted over.
+local function checkOverlapBadges(entry, months, want_splits, label)
+	local canvas, view = entry.canvas, entry.view
+
+	local index = {}
+	for i = 1, canvas:elementCount() do index[canvas[i]] = i end
+
+	local wrong, splits, halves = 0, 0, 0
+	for i, m in ipairs(months) do
+		local block = view.blocks[i]
+		for row = 0, block.rows - 1 do
+			for col = 0, 6 do
+				local day = expectedDay(m.year, m.month, row, col)
+				if day then
+					local cell = row * 7 + col + 1
+					local want = (OVERLAPS[m.year] or {})[string.format("%02d-%02d", m.month, day)] == true
+					local half, badge, lbl = block.halves[cell], block.badges[cell], block.labels[cell]
+					local on = half ~= nil and half.action == "fill"
+					if half then halves = halves + 1 end
+					if on then splits = splits + 1 end
+					if on ~= want then
+						wrong = wrong + 1
+						if wrong <= 3 then
+							print(string.format("       %04d-%02d-%02d: half %s, expected %s",
+								m.year, m.month, day, on and "shown" or "hidden", want and "shown" or "hidden"))
+						end
+					elseif on then
+						-- the split day keeps its badge + its 休 glyph
+						local ok = half.type == "segments" and half.closed == true
+							and half.fillColor and half.fillColor.hex == JP_BLUE
+							and badge.action == "fill" and tostring(lbl.text) == "休"
+							and index[badge] < index[half] and index[half] < index[lbl]
+						-- the path: top pole -> right point -> bottom pole
+						local r, cx, cy = badge.radius, badge.center.x, badge.center.y
+						local c = half.coordinates
+						ok = ok and c and #c == 3
+						if ok then
+							ok = math.abs(c[1].x - cx) < 0.01 and math.abs(c[1].y - (cy - r)) < 0.01
+								and math.abs(c[2].x - (cx + r)) < 0.01 and math.abs(c[2].y - cy) < 0.01
+								and math.abs(c[3].x - cx) < 0.01 and math.abs(c[3].y - (cy + r)) < 0.01
+						end
+						if not ok then
+							wrong = wrong + 1
+							if wrong <= 3 then
+								print(string.format("       %04d-%02d-%02d: split badge malformed (%s)",
+									m.year, m.month, day, tostring(half.coordinates and #half.coordinates)))
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	check(wrong == 0, label .. ": only 中日重合 days wear the split badge", wrong .. " wrong cell(s)")
+	check(splits == want_splits, label .. ": " .. want_splits .. " split badge(s) in view",
+		"found " .. splits)
+
+	-- every block must have created a half-disc for every cell it built
+	local missing = 0
+	for _, block in ipairs(view.blocks) do
+		for cell = 1, block.rows * 7 do if not block.halves[cell] then missing = missing + 1 end end
+	end
+	check(missing == 0, label .. ": every built cell has a half-disc element", missing .. " missing")
+
+	-- legend: exactly one filled half-disc of its own, on top of a 中日重合 disc
+	local legend_halves = 0
+	for i = 1, canvas:elementCount() do
+		local e = canvas[i]
+		if e.type == "segments" and e.action == "fill" and e.fillColor and e.fillColor.hex == JP_BLUE then
+			legend_halves = legend_halves + 1
+		end
+	end
+	check(legend_halves == splits + 1, label .. ": one extra filled half-disc for the legend",
+		legend_halves .. " filled half-disc(s) vs " .. splits .. " split badge(s) + 1 legend")
+end
+
 --- Every cell of every month block must show the day number that belongs there,
 --- and nothing where the month has no day (a stale number is a real bug: the
 --- window rolls over once a month and the block it reuses can be shorter).
@@ -290,6 +392,7 @@ print(string.format("  (3-month canvas %.0fx%.0f, %d elements)", f3.w, f3.h, ele
 checkTodayMarker(three[1].canvas, "3-month")
 checkGrid(three[1], windowMonths(), "3-month")
 checkBadges(three[1], "3-month")
+checkOverlapBadges(three[1], windowMonths(), overlapCount(windowMonths()), "3-month")
 checkFits(three[1].canvas, "3-month")
 
 print("# year view")
@@ -307,6 +410,7 @@ check(elementCount(year[1].canvas) == expectedElements(yearMonths()),
 checkTodayMarker(year[1].canvas, "year")
 checkGrid(year[1], yearMonths(), "year")
 checkBadges(year[1], "year")
+checkOverlapBadges(year[1], yearMonths(), overlapCount(yearMonths()), "year")
 checkFits(year[1].canvas, "year")
 
 obj:toggleView()
@@ -323,6 +427,7 @@ local after = setFor(obj, "3month")
 check(#after == 1, "rollover: canvases still one per screen", "got " .. #after)
 checkGrid(after[1], windowMonths(), "rollover")
 checkBadges(after[1], "rollover")
+checkOverlapBadges(after[1], windowMonths(), overlapCount(windowMonths()), "rollover")
 checkTodayMarker(after[1].canvas, "rollover")
 
 -- ----------------------------------------------------------------- 2 screens ---

@@ -65,16 +65,40 @@ M.badge = {
 	y_adjust = 2.0,
 }
 
+-- A day that is BOTH a Chinese holiday and a Japanese one keeps the same ⌀9.2pt
+-- badge, split down the middle: the gold disc above stays the left half and a
+-- blue half-disc is painted over its right half. No angle convention is
+-- involved -- the half is a closed path of two cubic Béziers through the
+-- circle's right point, so the split is exactly the circle's vertical diameter
+-- and the half is exact rather than an arc approximation.
+M.half_k = 0.5522847498   -- circle-to-cubic-Bézier control point constant
+
+--- Coordinates of the half disc of radius `r` centred on (cx, cy); `side` is
+--- "right" or "left". Callers set `closed = true` (an open path would only be
+--- stroked). Shares the circle's two poles, so both halves stay congruent.
+function M.halfDisc(cx, cy, r, side)
+	local s = (side == "left") and -1 or 1
+	local k = M.half_k * r
+	return {
+		{ x = cx, y = cy - r },
+		{ c1x = cx + s * k, c1y = cy - r, c2x = cx + s * r, c2y = cy - k, x = cx + s * r, y = cy },
+		{ c1x = cx + s * r, c1y = cy + k, c2x = cx + s * k, c2y = cy + r, x = cx, y = cy + r },
+	}
+end
+
 M.legend = {
 	radius = 5.5,
 	text_size = 8,
-	gap = 12,             -- between legend items
+	gap = 6,              -- between legend items (5 items must fit in M.cal_w)
 	disc_gap = 4,         -- between a disc and its caption
 	label_box_h = 13,
 	label_y_adjust = 2.2, -- same top-anchored-text correction as the badges
+	-- `color2` makes a two-tone disc: `color` is its left half, `color2` its
+	-- right one (only the 中日重合 entry uses it).
 	items = {
-		{ glyph = "休", color = M.color.holiday, text = "中国节假日" },
-		{ glyph = "休", color = M.color.japan,   text = "日本节假日" },
+		{ glyph = "休", color = M.color.holiday, text = "中国假日" },
+		{ glyph = "休", color = M.color.japan,   text = "日本假日" },
+		{ glyph = "休", color = M.color.holiday, color2 = M.color.japan, text = "中日重合" },
 		{ glyph = "班", color = M.color.workday, text = "调休补班" },
 		{ glyph = nil,  color = M.color.weekend, text = "周末" },
 	},

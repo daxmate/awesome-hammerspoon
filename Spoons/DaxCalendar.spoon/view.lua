@@ -26,12 +26,14 @@ end
 
 --- Legend strip: a coloured disc (with a 休 / 班 glyph) and a caption per item,
 --- centred as a group under the grid. All the discs are painted first, then the
---- glyphs on top of them, then the captions.
+--- glyphs on top of them, then the captions. An item with a `color2` gets a
+--- two-tone disc (left half `color`, right half `color2`) -- the same shape a
+--- Chinese+Japanese holiday day wears on the grid.
 local function buildLegend(canvas, plan)
 	local items, total = {}, L.legend.gap * (#L.legend.items - 1)
 	for i, src in ipairs(L.legend.items) do
 		local w = 2 * L.legend.radius + L.legend.disc_gap + textWidth(src.text, L.legend.text_size)
-		items[i] = { glyph = src.glyph, color = src.color, text = src.text, w = w }
+		items[i] = { glyph = src.glyph, color = src.color, color2 = src.color2, text = src.text, w = w }
 		total = total + w
 	end
 	local x = (plan.w - total) / 2
@@ -45,6 +47,15 @@ local function buildLegend(canvas, plan)
 			center = { x = item.disc_x, y = plan.legend_y },
 			fillColor = item.color,
 		})
+		if item.color2 then
+			add(canvas, {
+				type = "segments",
+				action = "fill",
+				closed = true,
+				fillColor = item.color2,
+				coordinates = L.halfDisc(item.disc_x, plan.legend_y, L.legend.radius, "right"),
+			})
+		end
 		x = x + item.w + L.legend.gap
 	end
 	for _, item in ipairs(items) do
