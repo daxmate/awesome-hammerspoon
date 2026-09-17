@@ -53,7 +53,7 @@ function M.build(canvas, x, y, rows)
 		radius = L.today.radius,
 		center = {
 			x = x + L.pad + L.cell_w * 1.5,
-			y = y + L.cell_h * 2.5,
+			y = y + L.cell_h * 2 + L.today.ink_offset,
 		},
 		fillColor = L.color.today,
 	})
@@ -211,11 +211,11 @@ function M.update(block, ctx)
 				day_el.frame.x = block.x + L.pad + L.cell_w * (col + 1) - shift
 				if is_current_month and day_num == today.day then
 					-- 今天：亮色圆点画在数字下面（与数字同幅左移，保证数字在圆里居中），
-					-- 数字换成深色墨水，对比度拉满
+					-- 圆心对齐数字墨迹，而不是格子几何中心（hs.canvas 文字从 frame 顶部往下画）
 					block.today.action = "fill"
 					block.today.center = {
 						x = block.x + L.pad + L.cell_w * (col + 1.5) - shift,
-						y = block.y + L.cell_h * (row + 2.5),
+						y = block.y + L.cell_h * (row + 2) + L.today.ink_offset,
 					}
 					day_el.textColor = L.color.badge
 				end

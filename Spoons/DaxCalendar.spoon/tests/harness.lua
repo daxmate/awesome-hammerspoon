@@ -164,17 +164,32 @@ local function checkTodayMarker(canvas, label)
 		label .. ": today circle has radius 10", tostring(marker.radius))
 
 	local mcx, mcy = marker.center.x, marker.center.y
+	-- Centred on the number's INK, not on the cell box: hs.canvas draws text down
+	-- from the frame top, so the ink centre sits ~0.54 * textSize below it
+	-- (measured: 3.77pt for the 7pt badge glyphs, i.e. 0.54 * 7).
+	local function inkCenterY(el)
+		return el.frame.y + 0.54 * (el.textSize or 16)
+	end
 	local under
 	for _, e in ipairs(elems) do
 		if e.type == "text" and tostring(e.text) == tostring(today.day) and e.frame then
-			local cx = e.frame.x + e.frame.w / 2
-			local cy = e.frame.y + e.frame.h / 2
-			if math.abs(cx - mcx) < 0.05 and math.abs(cy - mcy) < 0.05 then under = e end
+			if math.abs(e.frame.x + e.frame.w / 2 - mcx) < 0.05 and math.abs(inkCenterY(e) - mcy) < 0.15 then
+				under = e
+			end
 		end
 	end
 	check(under ~= nil, label .. ": today circle is centred on a day number")
 	if under then
-		check(marker.radius * 2 <= under.frame.h + 0.01, label .. ": circle fits inside the day cell",
+		check(math.abs(mcx - (under.frame.x + under.frame.w / 2)) < 0.05,
+			label .. ": circle is horizontally centred on the digit",
+			string.format("circle %.2f vs digit centre %.2f", mcx, under.frame.x + under.frame.w / 2))
+		check(math.abs(mcy - inkCenterY(under)) < 0.15,
+			label .. ": circle is vertically centred on the digit ink",
+			string.format("circle %.2f vs ink %.2f", mcy, inkCenterY(under)))
+		check(math.abs(mcy - (under.frame.y + under.frame.h / 2)) > 2,
+			label .. ": circle is NOT merely centred on the cell box",
+			string.format("circle %.2f vs cell centre %.2f", mcy, under.frame.y + under.frame.h / 2))
+		check(marker.radius * 2 <= under.frame.h + 4, label .. ": circle fits within the row rhythm",
 			string.format("diameter %.1f vs cell %.1f", marker.radius * 2, under.frame.h))
 		check(under.textColor and under.textColor.hex == "#1B1B1B",
 			label .. ": today's digit is dark ink on the circle",

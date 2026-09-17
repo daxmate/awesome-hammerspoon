@@ -40,11 +40,16 @@ M.panel_radius = 10
 M.margin       = 20                          -- canvas inset from the screen corner
 M.font         = { title = 16, weekday = 12, day = 16, weeknum = 16, label = 7 }
 
--- Today marker: a filled circle behind the day number (the number is drawn on
--- top of it in dark ink). A circle, not a capsule: radius 10pt fits inside a
+-- Today marker: a filled circle behind the day number, with the number drawn on
+-- top of it in dark ink. A circle, not a capsule: radius 10pt fits inside a
 -- 22.9pt day cell with a small margin, and its 20pt width still holds a
 -- two-digit 16pt number.
-M.today = { radius = 10 }
+--
+-- hs.canvas draws text DOWN FROM THE FRAME'S TOP (it has no vertical alignment),
+-- so a 16pt number's ink centre sits ~8.6pt below the top of its cell -- about
+-- 3pt ABOVE the cell's own centre (the same effect badge.y_adjust compensates
+-- for). The circle is centred on that ink, so the number looks centred in it.
+M.today = { radius = 10, ink_offset = 0.54 * M.font.day }
 
 -- 休 / 班 badge geometry, measured against the 16pt day digits.
 M.badge = {
