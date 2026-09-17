@@ -1,6 +1,6 @@
 --- === Month block ===
 ---
---- One month of the calendar: the today pill, the month title, the weekday
+--- One month of the calendar: the today circle, the month title, the weekday
 --- header, the day grid, the week-number column and the 休 / 班 badges.
 ---
 --- Elements are created once, in order (hs.canvas only accepts contiguous
@@ -44,19 +44,18 @@ function M.build(canvas, x, y, rows)
 
 	local block = { x = x, y = y, rows = rows, days = {}, badges = {}, labels = {}, weeknums = {}, weekdays = {} }
 
-	-- today pill, positioned on the first cell by default and moved by update();
-	-- index 1 of the block, i.e. before the digits, so the number lands on top
-	block.pill = add({
-		type = "rectangle",
+	-- today marker: a filled circle behind today's number, positioned on the
+	-- first cell by default and moved by update(). It is the block's first element,
+	-- i.e. before the digits, so the number lands on top of it.
+	block.today = add({
+		type = "circle",
 		action = "skip",
-		fillColor = L.color.today,
-		roundedRectRadii = { xRadius = L.today_pill.h / 2, yRadius = L.today_pill.h / 2 },
-		frame = {
-			x = x + L.pad + L.cell_w + (L.cell_w - L.today_pill.w) / 2,
-			y = y + L.cell_h * 2 + (L.cell_h - L.today_pill.h) / 2,
-			w = L.today_pill.w,
-			h = L.today_pill.h,
+		radius = L.today.radius,
+		center = {
+			x = x + L.pad + L.cell_w * 1.5,
+			y = y + L.cell_h * 2.5,
 		},
+		fillColor = L.color.today,
 	})
 
 	block.title = add({
@@ -152,7 +151,7 @@ function M.build(canvas, x, y, rows)
 end
 
 --- Fill the block in for `ctx.month` of `ctx.year`: title, day numbers with
---- their holiday / weekend colour, 休 / 班 badges, week numbers and today's pill.
+--- their holiday / weekend colour, 休 / 班 badges, week numbers and today's circle.
 ---
 --- Every cell is written on every pass, empty ones included, so a month that
 --- needs fewer rows than the month it replaced cannot leave stale numbers
@@ -165,7 +164,7 @@ function M.update(block, ctx)
 	local is_current_month = (ctx.year == today.year and ctx.month == today.month)
 
 	block.title.text = string.format("%d年 %s", ctx.year, L.month_labels[ctx.month])
-	block.pill.action = "skip"
+	block.today.action = "skip"
 
 	for row = 0, block.rows - 1 do
 		for col = 0, 6 do
@@ -211,14 +210,12 @@ function M.update(block, ctx)
 				local shift = label_text and L.badge.day_shift or 0
 				day_el.frame.x = block.x + L.pad + L.cell_w * (col + 1) - shift
 				if is_current_month and day_num == today.day then
-					-- 今天：亮色胶囊画在数字下面（与数字同幅左移，保证数字在胶囊里居中），
+					-- 今天：亮色圆点画在数字下面（与数字同幅左移，保证数字在圆里居中），
 					-- 数字换成深色墨水，对比度拉满
-					block.pill.action = "fill"
-					block.pill.frame = {
-						x = block.x + L.pad + L.cell_w * (col + 1) + (L.cell_w - L.today_pill.w) / 2 - shift,
-						y = block.y + L.cell_h * (row + 2) + (L.cell_h - L.today_pill.h) / 2,
-						w = L.today_pill.w,
-						h = L.today_pill.h,
+					block.today.action = "fill"
+					block.today.center = {
+						x = block.x + L.pad + L.cell_w * (col + 1.5) - shift,
+						y = block.y + L.cell_h * (row + 2.5),
 					}
 					day_el.textColor = L.color.badge
 				end

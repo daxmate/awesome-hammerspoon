@@ -141,40 +141,43 @@ local function checkFits(canvas, label)
 		string.format("%d outside, worst %.1fpt past the edge (%s)", over, worst, worst_el))
 end
 
---- The pill must always be the designed size (it used to be squashed whenever a
---- month needed fewer than six week rows, so a 16pt number overflowed it).
+--- The today marker must be a filled CIRCLE centred exactly on today's number,
+--- with the number drawn on top of it in dark ink. A rounded rectangle is
+--- explicitly rejected: with equal corner radii it degenerates into a capsule.
 local function checkTodayMarker(canvas, label)
 	local elems = {}
 	for i = 1, canvas:elementCount() do elems[i] = canvas[i] end
-	local pills = {}
-	for _, e in ipairs(elems) do
-		if e.type == "rectangle" and e.action == "fill" and e.fillColor and e.fillColor.hex == "#78FF78" then
-			pills[#pills + 1] = e
-		end
-	end
-	check(#pills == 1, label .. ": exactly one today pill", "found " .. #pills)
-	if #pills ~= 1 then return end
-	local pill = pills[1]
-	local f = canvas:frame()
-	-- resolve the pill frame (points here)
-	local pcx = pill.frame.x + pill.frame.w / 2
-	local pcy = pill.frame.y + pill.frame.h / 2
-	check(math.abs(pill.frame.h - 18.9) < 0.2 and math.abs(pill.frame.w - 22) < 0.2,
-		label .. ": today pill is the designed size",
-		string.format("%.1fx%.1f", pill.frame.w, pill.frame.h))
 
+	local markers, rects = {}, 0
+	for _, e in ipairs(elems) do
+		local is_marker_color = e.action == "fill" and e.fillColor and e.fillColor.hex == "#78FF78"
+		if is_marker_color and e.type == "circle" then markers[#markers + 1] = e end
+		if is_marker_color and e.type ~= "circle" then rects = rects + 1 end
+	end
+	check(#markers == 1, label .. ": exactly one today marker", "found " .. #markers)
+	check(rects == 0, label .. ": today marker is a circle, not a capsule/rectangle",
+		rects .. " non-circle element(s)")
+	if #markers ~= 1 then return end
+
+	local marker = markers[1]
+	check(math.abs((marker.radius or 0) - 10) < 0.01,
+		label .. ": today circle has radius 10", tostring(marker.radius))
+
+	local mcx, mcy = marker.center.x, marker.center.y
 	local under
 	for _, e in ipairs(elems) do
 		if e.type == "text" and tostring(e.text) == tostring(today.day) and e.frame then
 			local cx = e.frame.x + e.frame.w / 2
 			local cy = e.frame.y + e.frame.h / 2
-			if math.abs(cx - pcx) < 0.05 and math.abs(cy - pcy) < 0.05 then under = e end
+			if math.abs(cx - mcx) < 0.05 and math.abs(cy - mcy) < 0.05 then under = e end
 		end
 	end
-	check(under ~= nil, label .. ": pill sits exactly under a day number")
+	check(under ~= nil, label .. ": today circle is centred on a day number")
 	if under then
+		check(marker.radius * 2 <= under.frame.h + 0.01, label .. ": circle fits inside the day cell",
+			string.format("diameter %.1f vs cell %.1f", marker.radius * 2, under.frame.h))
 		check(under.textColor and under.textColor.hex == "#1B1B1B",
-			label .. ": today's digit is dark ink on the pill",
+			label .. ": today's digit is dark ink on the circle",
 			under.textColor and tostring(under.textColor.hex))
 	end
 end

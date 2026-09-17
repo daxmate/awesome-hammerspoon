@@ -20,8 +20,8 @@ M.color = {
 	holiday = { hex = "#FFB800" },        -- Chinese holiday
 	japan   = { hex = "#4FC3F7" },        -- Japanese holiday
 	workday = { hex = "#9AA7B8" },        -- 调休补班 (weekend that is a workday)
-	badge   = { hex = "#1B1B1B" },        -- dark glyph on a coloured badge / pill
-	today   = { hex = "#78FF78" },        -- today pill
+	badge   = { hex = "#1B1B1B" },        -- dark glyph on a coloured badge / today circle
+	today   = { hex = "#78FF78" },        -- today circle
 	header  = { hex = "#78FF78" },        -- weekday header + view toggle
 	weeknum = { red = 246 / 255, blue = 246 / 255, green = 246 / 255, alpha = 0.5 },
 	panel   = { red = 0, blue = 0, green = 0, alpha = 0.3 },
@@ -40,10 +40,11 @@ M.panel_radius = 10
 M.margin       = 20                          -- canvas inset from the screen corner
 M.font         = { title = 16, weekday = 12, day = 16, weeknum = 16, label = 7 }
 
--- Today pill: wide enough for a two-digit 16pt Courier number (19.2pt) plus a
--- little breathing room, and a touch shorter than the cell so it reads as a
--- highlight rather than a filled cell.
-M.today_pill = { w = M.cell_w - 8, h = M.cell_h - 4 }
+-- Today marker: a filled circle behind the day number (the number is drawn on
+-- top of it in dark ink). A circle, not a capsule: radius 10pt fits inside a
+-- 22.9pt day cell with a small margin, and its 20pt width still holds a
+-- two-digit 16pt number.
+M.today = { radius = 10 }
 
 -- 休 / 班 badge geometry, measured against the 16pt day digits.
 M.badge = {
