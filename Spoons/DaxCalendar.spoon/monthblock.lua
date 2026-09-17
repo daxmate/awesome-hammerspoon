@@ -22,10 +22,12 @@ local function weekNumberOf(year, month, day)
 	return tonumber(os.date("%W", os.time({ year = year, month = month, day = day, hour = 12 })))
 end
 
---- Centre of the badge circle of the cell at (col, row), both 0-based.
+--- Centre of the badge circle of the cell at (col, row), both 0-based. A day
+--- cell spans x + pad + cell_w*(col+1) .. +cell_w, so the badge hugs its right
+--- edge (margin_x from it) and its top edge (margin_y from it).
 local function badgeCenter(x, y, col, row)
 	return {
-		x = x + L.pad + L.cell_w * (col + 1) - L.badge.margin_x,
+		x = x + L.pad + L.cell_w * (col + 2) - L.badge.margin_x,
 		y = y + L.cell_h * (row + 2) + L.badge.margin_y,
 	}
 end

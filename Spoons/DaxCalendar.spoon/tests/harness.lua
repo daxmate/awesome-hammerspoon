@@ -225,6 +225,35 @@ local function checkGrid(entry, months, label)
 		wrong .. " wrong of " .. total)
 end
 
+--- A 休/班 badge must sit at the top-right corner of ITS OWN day cell. (It once
+--- drifted a full cell width to the left, and no other check here would have
+--- noticed -- the day numbers were all in the right place.)
+local function checkBadges(entry, label)
+	local wrong, total = 0, 0
+	for _, block in ipairs(entry.view.blocks) do
+		for cell, day in pairs(block.days) do
+			local badge = block.badges[cell]
+			local text = block.labels[cell] and block.labels[cell].text or ""
+			if badge and badge.action == "fill" and text ~= "" then
+				total = total + 1
+				local cx, cy = badge.center.x, badge.center.y
+				local x, y, w, h = day.frame.x, day.frame.y, day.frame.w, day.frame.h
+				-- right half of the cell, upper half, and never past its edges
+				local ok = cx > x + w / 2 and cx <= x + w and cy > y and cy < y + h / 2
+				if not ok then
+					wrong = wrong + 1
+					if wrong <= 3 then
+						print(string.format("       badge %s at %.1f,%.1f vs cell %.0f,%.0f %.0fx%.0f",
+							text, cx, cy, x, y, w, h))
+					end
+				end
+			end
+		end
+	end
+	check(wrong == 0, label .. ": every 休/班 badge sits in its own cell (n=" .. total .. ")",
+		wrong .. " misplaced")
+end
+
 -- ------------------------------------------------------------------ scenarios ---
 print(string.format("== single screen, today = %04d-%02d-%02d ==", today.year, today.month, today.day))
 local obj = boot({ BUILT_IN })
@@ -242,6 +271,7 @@ check(elementCount(three[1].canvas) == expectedElements(windowMonths()),
 print(string.format("  (3-month canvas %.0fx%.0f, %d elements)", f3.w, f3.h, elementCount(three[1].canvas)))
 checkTodayMarker(three[1].canvas, "3-month")
 checkGrid(three[1], windowMonths(), "3-month")
+checkBadges(three[1], "3-month")
 checkFits(three[1].canvas, "3-month")
 
 print("# year view")
@@ -258,6 +288,7 @@ check(elementCount(year[1].canvas) == expectedElements(yearMonths()),
 	tostring(elementCount(year[1].canvas)) .. " vs " .. expectedElements(yearMonths()))
 checkTodayMarker(year[1].canvas, "year")
 checkGrid(year[1], yearMonths(), "year")
+checkBadges(year[1], "year")
 checkFits(year[1].canvas, "year")
 
 obj:toggleView()
@@ -273,6 +304,7 @@ obj:render()
 local after = setFor(obj, "3month")
 check(#after == 1, "rollover: canvases still one per screen", "got " .. #after)
 checkGrid(after[1], windowMonths(), "rollover")
+checkBadges(after[1], "rollover")
 checkTodayMarker(after[1].canvas, "rollover")
 
 -- ----------------------------------------------------------------- 2 screens ---
